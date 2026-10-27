@@ -1,0 +1,2108 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>智能小车轨迹规划上位机 · Path Planner Host</title>
+<style>
+  :root{
+    color-scheme: light;
+    --page:#f9f9f7;  --surface:#fcfcfb;
+    --ink:#0b0b0b;   --ink2:#52514e;   --muted:#898781;
+    --grid:#e1e0d9;  --axis:#c3c2b7;   --border:rgba(11,11,11,.10);
+    --series1:#2a78d6;  --series2:#eb6834;  --good:#0ca30c;  --critical:#d03b3b;
+    --wash:rgba(11,11,11,.04);
+    --mono:ui-monospace,SFMono-Regular,Consolas,"Cascadia Mono",monospace;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:where(:not([data-theme="light"])){
+      color-scheme: dark;
+      --page:#0d0d0d;  --surface:#1a1a19;
+      --ink:#f0efec;   --ink2:#c3c2b7;   --muted:#898781;
+      --grid:#2c2c2a;  --axis:#383835;   --border:rgba(255,255,255,.10);
+      --series1:#3987e5;  --series2:#d95926;  --good:#0ca30c;  --critical:#d03b3b;
+      --wash:rgba(255,255,255,.06);
+    }
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0; background:var(--page); color:var(--ink);
+    font:14px/1.45 system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  .app{height:100%; display:flex; flex-direction:column}
+  header{
+    display:flex; align-items:baseline; gap:12px; flex-wrap:wrap;
+    padding:10px 16px; background:var(--surface); border-bottom:1px solid var(--border);
+  }
+  header h1{margin:0; font-size:15px; font-weight:600}
+  header .sub{font-size:12px; color:var(--muted)}
+  .pill{
+    margin-left:auto; font-size:12px; padding:3px 10px; border-radius:999px;
+    border:1px solid var(--border); color:var(--muted); white-space:nowrap;
+  }
+  .pill.ok{color:var(--good); border-color:color-mix(in srgb, var(--good) 45%, transparent)}
+  .pill.bad{color:var(--critical); border-color:color-mix(in srgb, var(--critical) 45%, transparent)}
+  .demo-bar{
+    display:flex; align-items:center; gap:10px; padding:7px 16px;
+    background:color-mix(in srgb, var(--series2) 12%, var(--surface));
+    border-bottom:1px solid var(--border); font-size:12px; color:var(--ink2);
+  }
+  .demo-bar[hidden]{display:none}
+  .demo-bar .demo-dot{width:8px;height:8px;border-radius:50%;background:var(--series2);flex:0 0 auto}
+  .demo-bar b{color:var(--ink)}
+  .demo-bar button{margin-left:auto;flex:0 0 auto}
+  main{flex:1; min-height:0; display:flex; gap:14px; padding:14px}
+
+  .stage{flex:1; min-width:0; min-height:0; display:flex; flex-direction:column; gap:8px}
+  .canvas-wrap{
+    position:relative; flex:1; min-height:0; display:flex; align-items:center; justify-content:center;
+    background:var(--surface); border:1px solid var(--border); border-radius:10px; overflow:hidden;
+  }
+  canvas{display:block; touch-action:none; cursor:crosshair}
+  .legend{display:flex; flex-wrap:wrap; gap:14px; font-size:12px; color:var(--ink2)}
+  .legend span{display:inline-flex; align-items:center; gap:6px}
+  .dot{width:9px;height:9px;border-radius:50%;display:inline-block}
+  .legend .tip-line{color:var(--muted)}
+
+  #tip{
+    position:absolute; pointer-events:none; z-index:5; display:none;
+    background:var(--surface); color:var(--ink); border:1px solid var(--border);
+    border-radius:6px; padding:5px 8px; font-size:12px; font-variant-numeric:tabular-nums;
+    box-shadow:0 4px 14px rgba(0,0,0,.14); white-space:nowrap;
+  }
+  #tip .warn{color:var(--critical)}
+
+  .panel{width:384px; flex:0 0 384px; overflow-y:auto; display:flex; flex-direction:column; gap:12px; padding-right:2px}
+  .card{background:var(--surface); border:1px solid var(--border); border-radius:10px}
+  .card>.body{padding:2px 12px 12px}
+  .card>summary{
+    list-style:none; cursor:pointer; padding:11px 12px; display:flex; align-items:center; gap:8px;
+  }
+  .card>summary::-webkit-details-marker{display:none}
+  .card>summary::after{content:'▾'; margin-left:auto; color:var(--muted); font-size:11px}
+  .card[open]>summary::after{content:'▴'}
+  .cardtitle{
+    font-size:11px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; color:var(--muted);
+  }
+  .badge{
+    font-size:10.5px; padding:1px 6px; border-radius:999px; letter-spacing:0;
+    border:1px solid var(--border); color:var(--ink2); text-transform:none;
+  }
+  .badge.warn{color:var(--critical); border-color:color-mix(in srgb, var(--critical) 45%, transparent)}
+
+  .stats{display:grid; grid-template-columns:1fr 1fr; gap:8px}
+  .stat{background:var(--wash); border-radius:8px; padding:8px 10px}
+  .stat .k{font-size:11px; color:var(--muted)}
+  .stat .v{font-size:18px; font-weight:600; margin-top:2px; letter-spacing:-.01em}
+  .stat .v small{font-size:11px; font-weight:500; color:var(--ink2); margin-left:1px}
+  .stat .v.warn{color:var(--critical)}
+
+  .row{display:flex; align-items:center; justify-content:space-between; gap:10px; margin:9px 0}
+  .row label{font-size:13px; color:var(--ink2)}
+  .row .val{font-size:12px; color:var(--muted); font-variant-numeric:tabular-nums}
+  input[type=range]{width:100%; margin:2px 0 0; accent-color:var(--series1)}
+  input[type=number],input[type=text],select{
+    padding:5px 7px; font:inherit; font-size:13px; color:var(--ink);
+    background:var(--page); border:1px solid var(--border); border-radius:6px;
+  }
+  input[type=number]{width:92px; font-variant-numeric:tabular-nums}
+  input[type=text]{width:100%}
+  select{width:100%}
+  .check{display:flex; align-items:flex-start; gap:8px; margin:10px 0; font-size:13px; color:var(--ink2)}
+  .check input{margin:2px 0 0; accent-color:var(--series1)}
+  .hint{font-size:11.5px; color:var(--muted); margin:6px 0 0; line-height:1.45}
+  .hint code{font-family:var(--mono); font-size:11px; background:var(--wash); padding:1px 4px; border-radius:4px}
+
+  .btns{display:grid; grid-template-columns:1fr 1fr; gap:8px}
+  .btns.one{grid-template-columns:1fr}
+  .btns.three{grid-template-columns:1fr 1fr 1fr}
+  button{
+    font:inherit; font-size:13px; padding:7px 10px; cursor:pointer;
+    color:var(--ink); background:var(--page);
+    border:1px solid var(--border); border-radius:7px;
+  }
+  button:hover:not(:disabled){background:var(--wash)}
+  button:disabled{opacity:.42; cursor:not-allowed}
+  button.primary{background:var(--series1); border-color:transparent; color:#fff}
+  button.primary:hover:not(:disabled){filter:brightness(1.06)}
+  button.danger{color:var(--critical)}
+  button.on{background:var(--series1); border-color:transparent; color:#fff}
+
+  .issues{margin:0; padding:0; list-style:none; max-height:150px; overflow:auto}
+  .issues li{
+    font-size:12px; padding:5px 8px; border-radius:6px; margin-bottom:4px;
+    background:var(--wash); font-variant-numeric:tabular-nums; display:flex; gap:8px;
+  }
+  .issues li .n{color:var(--critical); font-weight:600; min-width:34px}
+  .issues .none{color:var(--good)}
+
+  textarea{
+    width:100%; height:104px; resize:vertical; font-family:var(--mono); font-size:11.5px;
+    line-height:1.5; color:var(--ink); background:var(--page);
+    border:1px solid var(--border); border-radius:7px; padding:7px 8px;
+  }
+  #log{
+    height:132px; overflow:auto; font-family:var(--mono); font-size:11.5px; line-height:1.55;
+    background:var(--page); border:1px solid var(--border); border-radius:7px; padding:6px 8px;
+    white-space:pre-wrap; word-break:break-all;
+  }
+  #log .rx{color:var(--series1)}
+  #log .tx{color:var(--ink2)}
+  #log .er{color:var(--critical)}
+  #log .sy{color:var(--muted)}
+  .badge.ok{color:var(--good); border-color:color-mix(in srgb, var(--good) 45%, transparent)}
+  #brFol .warn{color:var(--critical)}
+  #brFol b{color:var(--ink)}
+  #brLog{
+    height:132px; overflow:auto; font-family:var(--mono); font-size:11.5px; line-height:1.55;
+    background:var(--page); border:1px solid var(--border); border-radius:7px; padding:6px 8px;
+    white-space:pre-wrap; word-break:break-all;
+  }
+  #brLog .rx{color:var(--series1)}
+  #brLog .tx{color:var(--ink2)}
+  #brLog .er{color:var(--critical)}
+  #brLog .sy{color:var(--muted)}
+  .bar{height:5px; border-radius:3px; background:var(--wash); overflow:hidden; margin-top:8px}
+  .bar i{display:block; height:100%; width:0; background:var(--series1); transition:width .1s linear}
+
+  .pts{max-height:230px; overflow:auto; border:1px solid var(--border); border-radius:8px}
+  table{width:100%; border-collapse:collapse; font-size:12px; font-variant-numeric:tabular-nums}
+  th,td{padding:4px 8px; text-align:right; border-bottom:1px solid var(--border)}
+  th{position:sticky; top:0; background:var(--surface); color:var(--muted); font-weight:500; font-size:11px}
+  td:first-child,th:first-child{text-align:left; color:var(--ink2)}
+  tr.bad td{color:var(--critical)}
+  tr:last-child td{border-bottom:none}
+  .empty{padding:14px 10px; font-size:12.5px; color:var(--muted); text-align:center}
+
+  #toast{
+    position:fixed; left:50%; bottom:26px; transform:translateX(-50%) translateY(8px);
+    background:var(--ink); color:var(--page); font-size:13px;
+    padding:7px 14px; border-radius:999px; opacity:0; pointer-events:none;
+    transition:opacity .18s, transform .18s; z-index:20; max-width:70vw; text-align:center;
+  }
+  #toast.on{opacity:1; transform:translateX(-50%) translateY(0)}
+
+  @media (max-width:980px){
+    main{flex-direction:column; overflow-y:auto}
+    .panel{width:auto; flex:none}
+    .canvas-wrap{min-height:50vh}
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <h1>智能小车轨迹规划上位机</h1>
+    <span class="sub">手绘 → 采样 → 可行驶性校验 → 串口下发</span>
+    <span class="pill" id="pill">串口未连接</span>
+  </header>
+
+  <div class="demo-bar" id="demoBar" hidden>
+    <i class="demo-dot"></i>
+    <span id="demoNote">演示模式</span>
+    <button id="demoToggle" type="button">连接真车桥</button>
+  </div>
+
+  <main>
+    <section class="stage">
+      <div class="canvas-wrap" id="wrap">
+        <canvas id="cv"></canvas>
+        <div id="tip"></div>
+      </div>
+      <div class="legend">
+        <span><i class="dot" style="background:var(--good)"></i>起点</span>
+        <span><i class="dot" style="background:var(--critical)"></i>终点</span>
+        <span><i class="dot" style="background:var(--series2)"></i>航路点</span>
+        <span><i class="dot" style="background:var(--series1)"></i>已采样轨迹</span>
+        <span><i class="dot" style="background:var(--ink)"></i>小车当前位置</span>
+        <span class="tip-line">左键手绘 · 拖动航路点微调 · 双击折线插点 · 右键点删除 · Ctrl+Z 撤销</span>
+      </div>
+    </section>
+
+    <aside class="panel">
+
+      <details class="card" open>
+        <summary><span class="cardtitle">轨迹统计</span><span class="badge" id="modeBadge" style="display:none">手动微调中</span></summary>
+        <div class="body">
+          <div class="stats">
+            <div class="stat"><div class="k">航路点</div><div class="v" id="sPts">0<small>个</small></div></div>
+            <div class="stat"><div class="k">总里程</div><div class="v" id="sLen">0<small>m</small></div></div>
+            <div class="stat"><div class="k">最小转弯半径</div><div class="v" id="sRad">—</div></div>
+            <div class="stat"><div class="k">预计耗时</div><div class="v" id="sTime">—</div></div>
+          </div>
+        </div>
+      </details>
+
+      <details class="card" open>
+        <summary><span class="cardtitle">参数</span></summary>
+        <div class="body">
+          <div class="row" style="margin-top:0"><label>比例尺（1 画布单位 = ? mm）</label></div>
+          <div class="row" style="margin-top:-4px">
+            <input type="range" id="scaleRange" min="1" max="50" step="0.5" value="5" />
+            <input type="number" id="scaleNum" min="0.1" max="500" step="0.1" value="5" />
+          </div>
+          <p class="hint" id="scaleHint"></p>
+
+          <div class="row" style="margin-top:14px"><label>采样间距（画布单位）</label></div>
+          <input type="range" id="spacing" min="5" max="200" step="5" value="40" />
+          <p class="hint" id="spacingHint"></p>
+
+          <div class="row" style="margin-top:14px"><label>轨迹平滑</label><span class="val" id="smVal">2 次</span></div>
+          <input type="range" id="smooth" min="0" max="6" step="1" value="2" />
+
+          <div class="row" style="margin-top:14px"><label>小车速度（m/s）</label>
+            <input type="number" id="speed" min="0.01" max="10" step="0.05" value="0.3" />
+          </div>
+
+          <label class="check">
+            <input type="checkbox" id="align" checked />
+            <span>首段方向对齐 +X 轴（开机车头方向即 IMU 零位时勾选）</span>
+          </label>
+        </div>
+      </details>
+
+      <details class="card" open>
+        <summary><span class="cardtitle">可行驶性校验</span><span class="badge" id="chkBadge">未校验</span></summary>
+        <div class="body">
+          <label class="check" style="margin-top:0">
+            <input type="checkbox" id="chkOn" checked />
+            <span>启用校验（按最小转弯半径标出拐不过去的点）</span>
+          </label>
+          <div class="row"><label>最小转弯半径（m）</label>
+            <input type="number" id="rmin" min="0.05" max="5" step="0.05" value="0.30" />
+          </div>
+          <div class="row"><label>航段过短阈值（m）</label>
+            <input type="number" id="dmin" min="0.005" max="1" step="0.005" value="0.05" />
+          </div>
+          <p class="hint">半径由相邻三点的外接圆算出，所以它同时受"弯有多急"和"采样间距多大"影响：间距越大，同样的弯算出来越缓。要比对实测值，先把采样间距定死。差速小车能原地转，急弯只是走起来顿一下，不是过不去。</p>
+          <ul class="issues" id="issueList"></ul>
+        </div>
+      </details>
+
+      <details class="card" open>
+        <summary><span class="cardtitle">预览与编辑</span></summary>
+        <div class="body">
+          <div class="btns three">
+            <button id="play" class="primary">▶ 播放</button>
+            <button id="rewind">重置</button>
+            <select id="animMul" style="width:auto">
+              <option value="2">×2</option>
+              <option value="5" selected>×5</option>
+              <option value="10">×10</option>
+              <option value="20">×20</option>
+            </select>
+          </div>
+          <div class="btns" style="margin-top:8px">
+            <button id="resample" disabled>重新采样</button>
+            <button id="demo">示例轨迹</button>
+            <button id="undo" disabled>撤销 (Ctrl+Z)</button>
+            <button id="clear" class="danger">清除画布</button>
+          </div>
+          <p class="hint" id="editHint">拖动任一航路点即进入"手动微调"，采样参数会被冻结；点【重新采样】丢弃微调、回到自动采样。</p>
+        </div>
+      </details>
+
+      <details class="card" open>
+        <summary><span class="cardtitle">本机服务（bridge）</span><span class="badge" id="brBadge">未连接</span></summary>
+        <div class="body">
+          <div class="btns" style="margin-top:0">
+            <button id="brConn" class="primary">连接本机服务</button>
+            <button id="brDisc" disabled>断开</button>
+          </div>
+          <div class="row" style="margin-top:10px"><label>服务地址</label>
+            <input type="text" id="brUrl" value="http://localhost:8000" style="width:170px" />
+          </div>
+          <div class="row"><label>串口（留空 = 用启动参数）</label>
+            <input type="text" id="brPort" placeholder="COM14" style="width:110px" />
+          </div>
+          <p class="hint" id="brHint"></p>
+
+          <div class="row" style="margin-top:12px"><label>跟踪模式</label>
+            <select id="brMode" style="width:auto">
+              <option value="stop" selected>分段停走（默认）</option>
+              <option value="cont">连续（转弯不停）</option>
+            </select>
+          </div>
+          <div class="row"><label>跟踪速度</label>
+            <input type="number" id="brSpeed" min="100" max="800" step="50" value="400" style="width:80px" />
+            <span class="val">400 ≈ 0.16 m/s</span>
+          </div>
+
+          <div class="btns three" style="margin-top:8px">
+            <button id="brSend" class="primary" disabled>下发并开跑</button>
+            <button id="brLoad" disabled>只装不跑</button>
+            <button id="brStop" disabled>停车</button>
+          </div>
+
+          <div class="row" style="margin-top:12px"><label>手动指令</label>
+            <input type="text" id="brCmd" placeholder="如 follow status" style="width:150px" />
+          </div>
+          <div class="btns three">
+            <button id="brCmdSend">发送</button>
+            <button id="brUnlock">解锁</button>
+            <button id="brOdom">看里程</button>
+          </div>
+          <p class="hint">接真车时的头两步靠这两个按钮：<b>解锁</b>（等同遥控器上发 <code>4F</code>，
+            不解锁 <code>follow start</code> 会被车拒绝）和<b>看里程</b>（手推轮子转一圈，
+            应该报 440 个计数 / 约 210 mm —— 后面所有距离都从它推出来）。</p>
+          <div class="bar"><i id="brProg"></i></div>
+          <p class="hint" id="brFol">— 还没有状态 —</p>
+
+          <div id="brLog" style="margin-top:8px"><span class="sy">— 车 → 页面 —</span></div>
+          <p class="hint">
+            车是<b>边推算位置边走</b>的：车上没有位置传感器，只有陀螺仪的航向，
+            所以位置靠航向 + 编码器累计里程推出来，<b>走得越远累积误差越大</b>，
+            分段停走就是为此兜底（每段都重新对齐航向），默认用它。<br>
+            链路失联急停靠"多久没收到字节"判断，桥在串口开着时会一直发心跳，
+            所以别让页面的标签页休眠太久（休眠会掐掉轮询，但心跳是桥自己在发的，不受影响）。
+          </p>
+        </div>
+      </details>
+
+      <details class="card" open>
+        <summary><span class="cardtitle">串口下发</span></summary>
+        <div class="body">
+          <p class="hint" style="margin-top:0">⚠ 这一栏是<b>浏览器直接抓串口</b>，和上面的本机服务<b>抢同一个 COM 口</b>：
+            同一时刻只能有一个开着。桥已经能下发轨迹，这里留着当兜底和手动调试用。</p>
+          <div class="btns" style="margin-top:0">
+            <button id="conn">连接串口</button>
+            <button id="disc" disabled>断开</button>
+          </div>
+          <div class="row" style="margin-top:10px"><label>波特率</label>
+            <select id="baud" style="width:auto">
+              <option>9600</option><option>19200</option>
+              <option selected>38400</option><option>57600</option>
+              <option>115200</option><option>230400</option>
+            </select>
+          </div>
+          <p class="hint" id="serialHint"></p>
+
+          <div class="row" style="margin-top:12px"><label>下发协议</label></div>
+          <select id="protoStyle">
+            <option value="lines" selected>逐行文本（msh 友好）：PATH,&lt;n&gt; / x,y,h / PATH_END</option>
+            <option value="compact">单行紧凑：PATH:&lt;n&gt;:x,y,h;x,y,h;…</option>
+          </select>
+          <div class="row" style="margin-top:10px"><label>坐标单位</label>
+            <select id="protoUnit" style="width:auto">
+              <option value="m" selected>米 (m)</option>
+              <option value="mm">毫米 (mm)</option>
+            </select>
+          </div>
+          <div class="row"><label>行尾</label>
+            <select id="eol" style="width:auto">
+              <option value="\n" selected>\n (LF)</option>
+              <option value="\r\n">\r\n (CRLF)</option>
+              <option value="">无</option>
+            </select>
+          </div>
+          <div class="row"><label>发送完追加指令</label>
+            <input type="text" id="postCmd" placeholder="留空 = 只装路径不启动" style="width:170px" />
+          </div>
+
+          <p class="hint">将要发送的字节（<span id="byteInfo">0 B</span>）：</p>
+          <textarea id="proto" readonly></textarea>
+
+          <div class="btns" style="margin-top:8px">
+            <button id="sendPath" class="primary" disabled>下发航点</button>
+            <button id="abort" disabled>中止</button>
+          </div>
+          <div class="bar"><i id="prog"></i></div>
+          <div class="row" style="margin-top:6px"><label>分块</label>
+            <span class="val"><input type="number" id="chunk" min="1" max="512" step="1" value="32" style="width:64px" /> B /
+            <input type="number" id="gap" min="0" max="200" step="1" value="3" style="width:64px" /> ms</span>
+          </div>
+          <p class="hint">分块 + 间隔是为了不把单片机的接收缓冲冲掉；38400 波特率下 32 B/3 ms 约等于把链路跑满。</p>
+
+          <div class="row" style="margin-top:12px"><label>手动指令</label>
+            <input type="text" id="manual" placeholder="如 path_start / help" style="width:170px" />
+          </div>
+          <div class="btns three">
+            <button id="sendManual">发送</button>
+            <button id="sendNL">发送空行</button>
+            <button id="clearLog">清空日志</button>
+          </div>
+          <div id="log" style="margin-top:8px"><span class="sy">— 串口日志 —</span></div>
+        </div>
+      </details>
+
+      <details class="card" open>
+        <summary><span class="cardtitle">导出</span></summary>
+        <div class="body">
+          <div class="btns one" style="margin-top:0"><button id="copyJson" class="primary">复制轨迹点 JSON</button></div>
+          <div class="btns" style="margin-top:8px">
+            <button id="dlJson">下载 .json</button>
+            <button id="dlH">下载 path_plan.h</button>
+          </div>
+          <p class="hint">单位米；原点 = 轨迹起点，+X = 首段前进方向，+Y = 左侧，航向逆时针为正、0° 指向 +X。</p>
+        </div>
+      </details>
+
+      <details class="card">
+        <summary><span class="cardtitle">航路点预览</span><span class="badge" id="tblBadge"></span></summary>
+        <div class="body">
+          <div class="pts" id="ptsBox"><div class="empty">画布为空</div></div>
+        </div>
+      </details>
+
+    </aside>
+  </main>
+</div>
+<div id="toast"></div>
+
+<script>
+(function(){
+'use strict';
+
+/* ==================================================================
+   智能小车轨迹规划上位机 —— 纯前端单文件
+   坐标约定：画布逻辑坐标 1000x700（Y 向下）；世界坐标单位米，
+             原点 = 轨迹起点，+X 前进，+Y 左侧，航向逆时针为正。
+   ================================================================== */
+
+const W = 1000, H = 700;      // 逻辑画布尺寸（画布单位）
+const GRID = 50;              // 细网格
+const MAX_POINTS = 400;       // 航点数量提醒阈值
+
+const $  = id => document.getElementById(id);
+const cv = $('cv'), ctx = cv.getContext('2d'), wrap = $('wrap'), tip = $('tip');
+const view = { scale: 1, dpr: 1 };
+
+const state = {
+  strokes : [],   // 每一笔原始点
+  raw     : [],   // 拼成一整条折线
+  manual  : null, // 手动微调后的画布坐标点；null = 自动采样
+  canvasPts: [],  // 当前航点（画布坐标）
+  wps     : [],   // 当前航点（世界坐标 + 航向 + 曲率半径）
+  metrics : null,
+  issues  : [],
+  hover   : -1,
+  drag    : -1,
+};
+
+const play  = { on:false, s:0, raf:0, last:0 };   // 动画：已行进里程(m)
+const undoStack = [];
+
+const num    = (v, n) => Number(v.toFixed(n));
+const clamp  = (v, a, b) => Math.min(b, Math.max(a, v));
+const sleep  = ms => new Promise(r => setTimeout(r, ms));
+
+/* ================= 参数 ================= */
+function params(){
+  return {
+    mmPerUnit: clamp(parseFloat($('scaleNum').value) || 5, 0.1, 500),
+    spacing  : clamp(parseFloat($('spacing').value) || 40, 2, 500),
+    smooth   : clamp(parseInt($('smooth').value, 10) || 0, 0, 6),
+    align    : $('align').checked,
+    speed    : clamp(parseFloat($('speed').value) || 0.3, 0.01, 10),
+    chkOn    : $('chkOn').checked,
+    rmin     : clamp(parseFloat($('rmin').value) || 0.3, 0.05, 5),
+    dmin     : clamp(parseFloat($('dmin').value) || 0.05, 0.005, 1),
+  };
+}
+const mPerUnit = p => p.mmPerUnit / 1000;      // 画布单位 -> 米
+
+/* ================= 画布尺寸 ================= */
+function resize(){
+  const r = wrap.getBoundingClientRect();
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const s = Math.min(r.width / W, r.height / H);
+  const cssW = W * s, cssH = H * s;
+  cv.style.width = cssW + 'px';
+  cv.style.height = cssH + 'px';
+  cv.width  = Math.round(cssW * dpr);
+  cv.height = Math.round(cssH * dpr);
+  view.scale = s; view.dpr = dpr;
+  draw();
+}
+
+const clampPt = p => ({ x: clamp(p.x, 0, W), y: clamp(p.y, 0, H) });
+function toLogical(e){
+  const r = cv.getBoundingClientRect();
+  return clampPt({ x: (e.clientX - r.left) / view.scale, y: (e.clientY - r.top) / view.scale });
+}
+
+/* ================= 采样算法 ================= */
+// 拉普拉斯平滑（端点固定），去掉手抖
+function smoothPath(pts, passes){
+  let p = pts.map(q => ({ x: q.x, y: q.y }));
+  for (let k = 0; k < passes && p.length > 2; k++){
+    const out = p.map(q => ({ x: q.x, y: q.y }));
+    for (let i = 1; i < p.length - 1; i++){
+      out[i] = {
+        x: (p[i-1].x + 2*p[i].x + p[i+1].x) / 4,
+        y: (p[i-1].y + 2*p[i].y + p[i+1].y) / 4,
+      };
+    }
+    p = out;
+  }
+  return p;
+}
+
+// 等弧长重采样：每 d 个画布单位取一点，首尾必留
+function resample(pts, d){
+  if (pts.length < 2) return pts.map(q => ({ x: q.x, y: q.y }));
+  const out = [{ x: pts[0].x, y: pts[0].y }];
+  let remain = d;
+  for (let i = 1; i < pts.length; i++){
+    const a = pts[i-1], b = pts[i];
+    const seg = Math.hypot(b.x - a.x, b.y - a.y);
+    if (seg < 1e-9) continue;
+    const ux = (b.x - a.x) / seg, uy = (b.y - a.y) / seg;
+    let traveled = 0;
+    while (traveled + remain <= seg){
+      traveled += remain;
+      out.push({ x: a.x + ux * traveled, y: a.y + uy * traveled });
+      remain = d;
+    }
+    remain -= (seg - traveled);
+  }
+  const last = out[out.length - 1], end = pts[pts.length - 1];
+  if (Math.hypot(end.x - last.x, end.y - last.y) > 0.01) out.push({ x: end.x, y: end.y });
+  return out;
+}
+
+// 画布坐标 -> 世界坐标（原点=起点，Y 翻转，可选把首段旋到 +X）
+function toWorld(pts, s, align){
+  const o = pts[0];
+  let w = pts.map(p => ({ x: (p.x - o.x) * s, y: -(p.y - o.y) * s }));
+  if (align && w.length >= 2){
+    const phi = Math.atan2(w[1].y - w[0].y, w[1].x - w[0].x);
+    const c = Math.cos(-phi), sn = Math.sin(-phi);
+    w = w.map(p => ({ x: p.x * c - p.y * sn, y: p.x * sn + p.y * c }));
+  }
+  return w;
+}
+
+// 三点外接圆半径：直线返回 Infinity
+function circleRadius(a, b, c){
+  const A = Math.hypot(b.x - c.x, b.y - c.y);
+  const B = Math.hypot(a.x - c.x, a.y - c.y);
+  const C = Math.hypot(a.x - b.x, a.y - b.y);
+  const area = Math.abs((b.x - a.x) * (c.y - a.y) - (c.x - a.x) * (b.y - a.y)) / 2;
+  if (area < 1e-12) return Infinity;
+  return A * B * C / (4 * area);
+}
+
+// 每点：航向（指向下一点）、到上一点距离、该点转弯半径
+function withHeading(w){
+  const n = w.length;
+  return w.map((p, i) => {
+    const j = Math.min(i + 1, n - 1), k = Math.max(j - 1, 0);
+    const dx = w[j].x - w[k].x, dy = w[j].y - w[k].y;
+    const h = (Math.abs(dx) < 1e-12 && Math.abs(dy) < 1e-12) ? 0 : Math.atan2(dy, dx) * 180 / Math.PI;
+    const dprev = i === 0 ? 0 : Math.hypot(p.x - w[i-1].x, p.y - w[i-1].y);
+    const rad = (i > 0 && i < n - 1) ? circleRadius(w[i-1], w[i], w[i+1]) : Infinity;
+    return {
+      i,
+      x: num(p.x, 4),
+      y: num(p.y, 4),
+      heading_deg: num(h, 1),
+      dist_from_prev_m: num(dprev, 4),
+      radius_m: rad,
+    };
+  });
+}
+
+function computeMetrics(canvasPts, wps, p){
+  let lenM = 0, maxTurn = 0, minRad = Infinity;
+  for (let i = 1; i < wps.length; i++) lenM += wps[i].dist_from_prev_m;
+  for (let i = 1; i < wps.length - 1; i++){
+    let dh = Math.abs(wps[i].heading_deg - wps[i-1].heading_deg);
+    if (dh > 180) dh = 360 - dh;
+    if (dh > maxTurn) maxTurn = dh;
+    if (wps[i].radius_m < minRad) minRad = wps[i].radius_m;
+  }
+  return {
+    lenM, maxTurn, minRad,
+    duration: p.speed > 0 ? lenM / p.speed : null,
+  };
+}
+
+// 可行驶性校验
+function checkDrivable(wps, p){
+  if (!p.chkOn || wps.length < 3) return [];
+  const out = [];
+  for (let i = 1; i < wps.length - 1; i++){
+    const r = wps[i].radius_m;
+    if (isFinite(r) && r < p.rmin){
+      out.push({ i, kind: 'radius', r, msg: '转弯半径 ' + r.toFixed(2) + ' m < ' + p.rmin.toFixed(2) + ' m' });
+    }
+  }
+  for (let i = 1; i < wps.length; i++){
+    if (wps[i].dist_from_prev_m < p.dmin){
+      out.push({ i, kind: 'short', r: wps[i].dist_from_prev_m,
+                 msg: '航段仅 ' + (wps[i].dist_from_prev_m * 100).toFixed(1) + ' cm（< ' + (p.dmin * 100).toFixed(1) + ' cm）' });
+    }
+  }
+  return out;
+}
+const badIndex = () => {
+  const s = new Set();
+  state.issues.forEach(x => s.add(x.i));
+  return s;
+};
+
+/* ================= 重算 ================= */
+function rebuildRaw(){
+  state.raw = [];
+  for (const st of state.strokes) for (const q of st) state.raw.push(q);
+}
+
+function recompute(duringDraw){
+  const p = params();
+  rebuildRaw();
+  let rs = [];
+  if (state.manual && state.manual.length >= 2){
+    rs = state.manual.map(q => ({ x: q.x, y: q.y }));
+  } else if (state.raw.length >= 2){
+    rs = resample(smoothPath(state.raw, p.smooth), p.spacing);
+  }
+  const wps = rs.length ? withHeading(toWorld(rs, mPerUnit(p), p.align)) : [];
+  state.canvasPts = rs;
+  state.wps = wps;
+  state.metrics = rs.length > 1 ? computeMetrics(rs, wps, p) : null;
+  state.issues = checkDrivable(wps, p);
+  if (state.hover >= rs.length) state.hover = -1;
+
+  updateStats(); updateChecks(); updateButtons(); updateProto(); draw();
+  if (!duringDraw) renderTable();
+}
+
+/* ================= 撤销 ================= */
+function pushUndo(){
+  undoStack.push(JSON.stringify({ s: state.strokes, m: state.manual }));
+  if (undoStack.length > 24) undoStack.shift();
+}
+function undo(){
+  const snap = undoStack.pop();
+  if (!snap) return;
+  resetPlay();
+  const o = JSON.parse(snap);
+  state.strokes = o.s || [];
+  state.manual  = o.m || null;
+  state.hover = -1;
+  recompute(false);
+}
+
+/* ================= 绘制 ================= */
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+
+function marker(x, y, r, color, ring){
+  ctx.fillStyle = css('--surface');
+  ctx.beginPath(); ctx.arc(x, y, r + ring, 0, 6.2832); ctx.fill();
+  ctx.fillStyle = color;
+  ctx.beginPath(); ctx.arc(x, y, r, 0, 6.2832); ctx.fill();
+}
+
+function draw(){
+  const p = params();
+  const s = view.scale, dpr = view.dpr;
+  const px = 1 / s;                                  // 1 CSS 像素 = ? 画布单位
+  ctx.setTransform(s * dpr, 0, 0, s * dpr, 0, 0);
+  ctx.clearRect(0, 0, W, H);
+
+  const surface = css('--surface'), gridC = css('--grid');
+  const ink2 = css('--ink2'), muted = css('--muted'), ink = css('--ink');
+  const s1 = css('--series1'), s2 = css('--series2');
+  const good = css('--good'), crit = css('--critical');
+
+  ctx.fillStyle = surface; ctx.fillRect(0, 0, W, H);
+
+  // 网格
+  ctx.lineWidth = px; ctx.strokeStyle = gridC;
+  ctx.beginPath();
+  for (let x = GRID; x < W; x += GRID){ ctx.moveTo(x, 0); ctx.lineTo(x, H); }
+  for (let y = GRID; y < H; y += GRID){ ctx.moveTo(0, y); ctx.lineTo(W, y); }
+  ctx.stroke();
+
+  const rs = state.canvasPts;
+  const bad = badIndex();
+
+  // 原始手绘轨迹（浅色参考）
+  if (state.raw.length >= 2){
+    ctx.save();
+    ctx.globalAlpha = .38;
+    ctx.strokeStyle = muted; ctx.lineWidth = 1.5 * px;
+    ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+    ctx.beginPath();
+    state.raw.forEach((q, i) => i ? ctx.lineTo(q.x, q.y) : ctx.moveTo(q.x, q.y));
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // 动画：已行进（实线）/ 未行进（淡）
+  const car = (play.s > 0 && rs.length >= 2) ? carAt(play.s / mPerUnit(p)) : null;
+
+  if (rs.length >= 2){
+    ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+    // 未走（淡）：从小车当前位置到终点
+    if (car){
+      ctx.save(); ctx.globalAlpha = .28;
+      ctx.strokeStyle = s1; ctx.lineWidth = 2 * px;
+      ctx.beginPath();
+      ctx.moveTo(car.x, car.y);
+      for (let i = car.idx; i < rs.length; i++) ctx.lineTo(rs[i].x, rs[i].y);
+      ctx.stroke(); ctx.restore();
+    }
+    // 已走（实）：起点 -> 小车当前位置
+    ctx.strokeStyle = s1;
+    ctx.lineWidth = (car ? 2.5 : 2) * px;
+    ctx.beginPath();
+    ctx.moveTo(rs[0].x, rs[0].y);
+    const end = car ? car.idx - 1 : rs.length - 1;
+    for (let i = 1; i <= end; i++) ctx.lineTo(rs[i].x, rs[i].y);
+    if (car) ctx.lineTo(car.x, car.y);
+    ctx.stroke();
+  }
+
+  // 航路点
+  if (rs.length){
+    const ring = 3 * px, rDot = 3.5 * px;
+    ctx.fillStyle = surface;
+    for (const q of rs){ ctx.beginPath(); ctx.arc(q.x, q.y, rDot + ring, 0, 6.2832); ctx.fill(); }
+    for (let i = 0; i < rs.length; i++){
+      const past = car ? i >= car.idx : false;
+      ctx.save();
+      if (past) ctx.globalAlpha = .3;
+      ctx.fillStyle = bad.has(i) ? crit : s2;
+      ctx.beginPath(); ctx.arc(rs[i].x, rs[i].y, bad.has(i) ? rDot * 1.3 : rDot, 0, 6.2832); ctx.fill();
+      ctx.restore();
+    }
+    // 悬停/选中高亮
+    if (state.hover >= 0 && state.hover < rs.length){
+      ctx.strokeStyle = ink; ctx.lineWidth = 1.5 * px;
+      ctx.beginPath(); ctx.arc(rs[state.hover].x, rs[state.hover].y, 8 * px, 0, 6.2832); ctx.stroke();
+    }
+    marker(rs[0].x, rs[0].y, 6 * px, good, ring);
+    if (rs.length > 1) marker(rs[rs.length-1].x, rs[rs.length-1].y, 6 * px, crit, ring);
+
+    // 序号（选择性标注）
+    const step = rs.length <= 30 ? 1 : Math.ceil(rs.length / 24);
+    ctx.font = (11 * px) + 'px system-ui,-apple-system,"Segoe UI",sans-serif';
+    ctx.textBaseline = 'middle'; ctx.textAlign = 'left';
+    ctx.lineWidth = 3 * px; ctx.strokeStyle = surface;
+    for (let i = 0; i < rs.length; i += step){
+      const t = String(i);
+      ctx.strokeText(t, rs[i].x + 8 * px, rs[i].y - 8 * px);
+      ctx.fillStyle = bad.has(i) ? crit : ink2;
+      ctx.fillText(t, rs[i].x + 8 * px, rs[i].y - 8 * px);
+    }
+  }
+
+  // 小车
+  if (car){
+    const L = 15 * px, Wd = 8 * px;
+    ctx.save();
+    ctx.translate(car.x, car.y);
+    ctx.rotate(car.ang);
+    ctx.fillStyle = surface;
+    ctx.beginPath(); ctx.arc(0, 0, L * 0.92, 0, 6.2832); ctx.fill();
+    ctx.fillStyle = ink;
+    ctx.beginPath();
+    ctx.moveTo(L, 0); ctx.lineTo(-L * 0.55, Wd); ctx.lineTo(-L * 0.3, 0); ctx.lineTo(-L * 0.55, -Wd);
+    ctx.closePath(); ctx.fill();
+    ctx.restore();
+  }
+
+  drawScaleBar(p, px, muted, ink2, surface);
+}
+
+// 沿画布折线走 dCanvas 距离，返回插值点、所在区间与画布朝向
+function carAt(dCanvas){
+  const rs = state.canvasPts;
+  let acc = 0;
+  for (let i = 1; i < rs.length; i++){
+    const seg = Math.hypot(rs[i].x - rs[i-1].x, rs[i].y - rs[i-1].y);
+    if (acc + seg >= dCanvas){
+      const t = seg < 1e-9 ? 0 : (dCanvas - acc) / seg;
+      return {
+        idx: i,
+        ang: Math.atan2(rs[i].y - rs[i-1].y, rs[i].x - rs[i-1].x),
+        x: rs[i-1].x + (rs[i].x - rs[i-1].x) * t,
+        y: rs[i-1].y + (rs[i].y - rs[i-1].y) * t,
+      };
+    }
+    acc += seg;
+  }
+  const n = rs.length;
+  return { idx: n - 1, ang: 0, x: rs[n-1].x, y: rs[n-1].y };
+}
+
+function drawScaleBar(p, px, muted, ink2, surface){
+  const unitPerM = 1000 / p.mmPerUnit;
+  const cands = [0.05, 0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50];
+  let best = cands[0], bestScore = Infinity;
+  for (const m of cands){
+    const l = m * unitPerM;
+    if (l > 300) break;
+    const score = Math.abs(l - 150);
+    if (score < bestScore){ bestScore = score; best = m; }
+  }
+  const bestPix = best * unitPerM;
+  const x0 = 24, y0 = H - 26, x1 = x0 + bestPix;
+  ctx.strokeStyle = muted; ctx.lineWidth = 2 * px; ctx.lineCap = 'butt';
+  ctx.beginPath();
+  ctx.moveTo(x0, y0); ctx.lineTo(x1, y0);
+  ctx.moveTo(x0, y0 - 5 * px); ctx.lineTo(x0, y0 + 5 * px);
+  ctx.moveTo(x1, y0 - 5 * px); ctx.lineTo(x1, y0 + 5 * px);
+  ctx.stroke();
+  const label = best < 1 ? (best * 100).toFixed(0) + ' cm' : best.toFixed(best < 10 ? 1 : 0) + ' m';
+  ctx.font = (12 * px) + 'px system-ui,-apple-system,"Segoe UI",sans-serif';
+  ctx.textAlign = 'left'; ctx.textBaseline = 'bottom';
+  ctx.lineWidth = 3 * px; ctx.strokeStyle = surface;
+  ctx.strokeText(label, x0, y0 - 8 * px);
+  ctx.fillStyle = ink2;
+  ctx.fillText(label, x0, y0 - 8 * px);
+}
+
+/* ================= 面板 ================= */
+function updateStats(){
+  const p = params(), m = state.metrics, n = state.wps.length;
+  $('sPts').innerHTML = n + '<small>个</small>';
+  $('sLen').innerHTML = (m ? m.lenM.toFixed(2) : '0') + '<small>m</small>';
+
+  const radEl = $('sRad');
+  if (m && isFinite(m.minRad)){
+    radEl.innerHTML = m.minRad.toFixed(2) + '<small>m</small>';
+    radEl.classList.toggle('warn', p.chkOn && m.minRad < p.rmin);
+  } else {
+    radEl.textContent = m ? '直线' : '—';
+    radEl.classList.remove('warn');
+  }
+  $('sTime').innerHTML = m && m.duration != null && n > 1 ? m.duration.toFixed(1) + '<small>s</small>' : '—';
+
+  $('scaleHint').textContent = '100 画布单位 = ' + (100 * mPerUnit(p)).toFixed(2) + ' m';
+  $('spacingHint').textContent = '每 ' + (p.spacing * mPerUnit(p)).toFixed(2) + ' m 一个航路点'
+    + (n > MAX_POINTS ? '　⚠ ' + n + ' 点偏多' : '');
+  $('smVal').textContent = p.smooth + ' 次';
+
+  const manual = !!state.manual;
+  $('modeBadge').style.display = manual ? '' : 'none';
+  $('resample').disabled = !manual;
+  $('editHint').textContent = manual
+    ? '当前是手动微调结果，采样参数已冻结。点【重新采样】丢弃微调、回到自动采样。'
+    : '拖动任一航路点即进入"手动微调"，采样参数会被冻结；点【重新采样】可退回。';
+}
+
+function updateChecks(){
+  const p = params();
+  const list = $('issueList'), badge = $('chkBadge');
+  if (!p.chkOn){ badge.textContent = '未校验'; badge.className = 'badge'; list.innerHTML = ''; return; }
+  if (state.wps.length < 3){ badge.textContent = '点太少'; badge.className = 'badge'; list.innerHTML = ''; return; }
+  if (!state.issues.length){
+    badge.textContent = '通过';
+    badge.className = 'badge';
+    list.innerHTML = '<li><span class="none">✓ 全部航点可行驶（最小半径 '
+      + (isFinite(state.metrics.minRad) ? state.metrics.minRad.toFixed(2) + ' m' : '直线') + '）</span></li>';
+    return;
+  }
+  badge.textContent = state.issues.length + ' 处告警';
+  badge.className = 'badge warn';
+  list.innerHTML = state.issues.slice(0, 60).map(x =>
+    '<li><span class="n">#' + x.i + '</span><span>' + x.msg + '</span></li>').join('');
+}
+
+function updateButtons(){
+  const empty = state.wps.length < 1;
+  $('copyJson').disabled = empty;
+  $('dlJson').disabled = empty;
+  $('dlH').disabled = empty;
+  $('clear').disabled = state.strokes.length === 0 && !state.manual;
+  $('undo').disabled = undoStack.length === 0;
+  $('play').disabled = state.wps.length < 2;
+  $('rewind').disabled = state.wps.length < 2;
+  $('sendPath').disabled = empty || !serial.connected;
+  brUI();                       // 轨迹变了 → 本机服务那三个按钮的可用性跟着变
+  updatePlayBtn();
+}
+
+function renderTable(){
+  const box = $('ptsBox'), badge = $('tblBadge');
+  if (!state.wps.length){
+    box.innerHTML = '<div class="empty">画布为空</div>';
+    badge.textContent = ''; return;
+  }
+  badge.textContent = state.wps.length + ' 点';
+  const bad = badIndex();
+  let html = '<table><thead><tr><th>#</th><th>x (m)</th><th>y (m)</th><th>航向 °</th><th>R (m)</th></tr></thead><tbody>';
+  for (const q of state.wps){
+    html += '<tr' + (bad.has(q.i) ? ' class="bad"' : '') + '><td>' + q.i + '</td><td>' + q.x.toFixed(3)
+          + '</td><td>' + q.y.toFixed(3) + '</td><td>' + q.heading_deg.toFixed(1) + '</td><td>'
+          + (isFinite(q.radius_m) ? q.radius_m.toFixed(2) : '∞') + '</td></tr>';
+  }
+  box.innerHTML = html + '</tbody></table>';
+}
+
+function toast(msg){
+  const t = $('toast');
+  t.textContent = msg; t.classList.add('on');
+  clearTimeout(toast._t);
+  toast._t = setTimeout(() => t.classList.remove('on'), 1800);
+}
+
+/* ================= 动画 ================= */
+function updatePlayBtn(){
+  const b = $('play');
+  b.textContent = play.on ? '⏸ 暂停' : '▶ 播放';
+  b.classList.toggle('on', play.on || play.s > 0);
+}
+function startPlay(){
+  if (state.wps.length < 2) return;
+  const total = state.metrics ? state.metrics.lenM : 0;
+  if (play.s >= total - 1e-6) play.s = 0;
+  play.on = true; play.last = performance.now();
+  cancelAnimationFrame(play.raf);
+  play.raf = requestAnimationFrame(tick);
+  updatePlayBtn();
+}
+function stopPlay(){
+  play.on = false;
+  cancelAnimationFrame(play.raf);
+  updatePlayBtn();
+}
+function resetPlay(){
+  stopPlay(); play.s = 0; updatePlayBtn(); draw();
+}
+function tick(t){
+  if (!play.on) return;
+  const dt = Math.min(0.25, (t - play.last) / 1000);
+  play.last = t;
+  const total = state.metrics ? state.metrics.lenM : 0;
+  const v = params().speed * (parseFloat($('animMul').value) || 5);
+  play.s += v * dt;
+  if (play.s >= total){ play.s = total; stopPlay(); }
+  draw();
+  if (play.on) play.raf = requestAnimationFrame(tick);
+}
+
+/* ================= 手动微调 ================= */
+function ensureManual(){
+  if (!state.manual) state.manual = state.canvasPts.map(q => ({ x: q.x, y: q.y }));
+}
+function hitPoint(pt, tol){
+  let bi = -1, bd = tol;
+  state.canvasPts.forEach((q, i) => {
+    const d = Math.hypot(q.x - pt.x, q.y - pt.y);
+    if (d <= bd){ bd = d; bi = i; }
+  });
+  return bi;
+}
+// 找离 pt 最近的航段，返回 {i: 插入位置, x, y}
+function nearestSegment(pt, tol){
+  const rs = state.canvasPts;
+  let best = null, bd = tol;
+  for (let i = 1; i < rs.length; i++){
+    const a = rs[i-1], b = rs[i];
+    const dx = b.x - a.x, dy = b.y - a.y;
+    const L2 = dx*dx + dy*dy;
+    if (L2 < 1e-9) continue;
+    const t = clamp(((pt.x - a.x) * dx + (pt.y - a.y) * dy) / L2, 0, 1);
+    const x = a.x + dx * t, y = a.y + dy * t;
+    const d = Math.hypot(pt.x - x, pt.y - y);
+    if (d <= bd){ bd = d; best = { i, x, y }; }
+  }
+  return best;
+}
+
+/* ================= 指针交互 ================= */
+let drawing = false, cur = null, dragging = -1;
+
+cv.addEventListener('pointerdown', e => {
+  if (e.pointerType === 'mouse' && e.button !== 0) return;
+  e.preventDefault();
+  cv.setPointerCapture(e.pointerId);
+  const pt = toLogical(e);
+  const hit = hitPoint(pt, 13 / view.scale);
+  if (hit >= 0){                       // 拖动航路点
+    resetPlay(); pushUndo(); ensureManual();
+    state.manual[hit] = pt;
+    dragging = hit; recompute(true);
+    return;
+  }
+  resetPlay(); pushUndo();
+  drawing = true; cur = [pt];
+  state.strokes.push(cur);
+  recompute(true);
+});
+
+cv.addEventListener('pointermove', e => {
+  const pt = toLogical(e);
+  if (dragging >= 0 && state.manual){
+    state.manual[dragging] = pt;
+    recompute(true);
+    return;
+  }
+  if (drawing && cur){
+    const last = cur[cur.length - 1];
+    if (Math.hypot(pt.x - last.x, pt.y - last.y) >= 1.6){
+      cur.push(pt); recompute(true);
+    }
+    return;
+  }
+  hover(e, pt);
+});
+
+function endStroke(){
+  if (dragging >= 0){ dragging = -1; recompute(false); return; }
+  if (!drawing) return;
+  drawing = false;
+  // 单击没有产生有效笔画：丢弃这一笔，并把刚才占的撤销位也退掉（双击插点会走到这里）
+  if (cur && cur.length < 2){
+    state.strokes.pop();
+    undoStack.pop();
+  }
+  cur = null;
+  recompute(false);
+}
+cv.addEventListener('pointerup', endStroke);
+cv.addEventListener('pointercancel', endStroke);
+cv.addEventListener('pointerleave', () => { tip.style.display = 'none'; state.hover = -1; draw(); });
+cv.addEventListener('contextmenu', e => {
+  e.preventDefault();
+  const pt = toLogical(e);
+  const hit = hitPoint(pt, 13 / view.scale);
+  if (hit < 0) return;
+  deletePoint(hit);
+});
+cv.addEventListener('dblclick', e => {
+  e.preventDefault();
+  const pt = toLogical(e);
+  const hit = hitPoint(pt, 13 / view.scale);
+  if (hit >= 0){ deletePoint(hit); return; }
+  const seg = nearestSegment(pt, 20 / view.scale);
+  if (!seg) return;
+  resetPlay(); pushUndo(); ensureManual();
+  state.manual.splice(seg.i, 0, { x: seg.x, y: seg.y });
+  recompute(false);
+  toast('已在 #' + seg.i + ' 处插入航点');
+});
+
+function deletePoint(i){
+  if (state.canvasPts.length <= 2){ toast('至少要保留 2 个航点'); return; }
+  resetPlay(); pushUndo(); ensureManual();
+  state.manual.splice(i, 1);
+  state.hover = -1;
+  recompute(false);
+  toast('已删除航点 #' + i);
+}
+
+/* ================= 悬停提示 ================= */
+function hover(e, pt){
+  const bi = hitPoint(pt, 16 / view.scale);
+  if (bi !== state.hover){ state.hover = bi; draw(); }
+  if (bi < 0){ tip.style.display = 'none'; return; }
+  const c = state.canvasPts[bi], w = state.wps[bi];
+  const isBad = badIndex().has(bi);
+  const cr = cv.getBoundingClientRect(), wr = wrap.getBoundingClientRect();
+  tip.innerHTML = '<b>#' + bi + '</b>　x ' + w.x.toFixed(3) + ' m　y ' + w.y.toFixed(3)
+    + ' m　航向 ' + w.heading_deg.toFixed(1) + '°　R '
+    + (isFinite(w.radius_m) ? w.radius_m.toFixed(2) + ' m' : '∞')
+    + (isBad ? '　<span class="warn">⚠ 拐弯过急</span>' : '');
+  tip.style.display = 'block';
+  tip.style.left = (cr.left - wr.left + c.x * view.scale + 14) + 'px';
+  tip.style.top  = (cr.top  - wr.top  + c.y * view.scale - 36) + 'px';
+}
+
+/* ================= 导出 ================= */
+function payload(){
+  const p = params(), wps = state.wps;
+  return {
+    version: 2,
+    generated: new Date().toISOString(),
+    unit: 'm',
+    frame: {
+      origin: '轨迹起点 (0,0)',
+      x_axis: p.align ? '首段前进方向' : '画布 +X（向右）',
+      y_axis: '左侧',
+      yaw: '逆时针为正，0° 指向 +X',
+    },
+    scale_m_per_canvas_unit: num(mPerUnit(p), 6),
+    sample_spacing_m: num(p.spacing * mPerUnit(p), 4),
+    smoothing_passes: p.smooth,
+    manually_adjusted: !!state.manual,
+    align_x_to_first_segment: p.align,
+    point_count: wps.length,
+    total_length_m: state.metrics ? num(state.metrics.lenM, 3) : 0,
+    min_turn_radius_m: state.metrics && isFinite(state.metrics.minRad) ? num(state.metrics.minRad, 3) : null,
+    est_duration_s: state.metrics && state.metrics.duration != null ? num(state.metrics.duration, 2) : null,
+    speed_mps: p.speed,
+    drivability_warnings: state.issues.map(x => ({ index: x.i, kind: x.kind, detail: x.msg })),
+    points: wps.map(q => ({
+      i: q.i, x: q.x, y: q.y,
+      heading_deg: q.heading_deg,
+      dist_from_prev_m: q.dist_from_prev_m,
+      radius_m: isFinite(q.radius_m) ? num(q.radius_m, 3) : null,
+    })),
+  };
+}
+
+function cHeader(){
+  const wps = state.wps;
+  const L = [];
+  L.push('/* path_plan.h  —  由「智能小车轨迹规划上位机」生成  ' + new Date().toLocaleString() + ' */');
+  L.push('/* 单位: 米; 原点 = 轨迹起点; +X = 起始车头方向, +Y = 左侧; 航向逆时针为正 */');
+  L.push('#ifndef PATH_PLAN_H');
+  L.push('#define PATH_PLAN_H');
+  L.push('');
+  L.push('#define PATH_POINT_COUNT ' + wps.length);
+  L.push('#define PATH_TOTAL_LENGTH_M ' + (state.metrics ? num(state.metrics.lenM, 3).toFixed(3) : '0.000') + 'f');
+  L.push('');
+  L.push('typedef struct {');
+  L.push('    float x;            /* m, 相对起点 */');
+  L.push('    float y;            /* m, 左为正 */');
+  L.push('    float heading_deg;  /* 指向下一点, 逆时针为正 */');
+  L.push('} waypoint_t;');
+  L.push('');
+  L.push('static const waypoint_t g_path[PATH_POINT_COUNT] = {');
+  for (const q of wps){
+    const s = '    { ' + q.x.toFixed(4) + 'f, ' + q.y.toFixed(4) + 'f, ' + q.heading_deg.toFixed(1) + 'f },';
+    L.push(s.padEnd(46) + '/* ' + String(q.i).padStart(3) + ' */');
+  }
+  L.push('};');
+  L.push('');
+  L.push('#endif /* PATH_PLAN_H */');
+  return L.join('\n');
+}
+
+function download(name, text, mime){
+  const blob = new Blob([text], { type: (mime || 'text/plain') + ';charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = name;
+  document.body.appendChild(a); a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
+}
+
+/* ==================================================================
+   串口（Web Serial）
+   ================================================================== */
+const serial = { port: null, writer: null, reader: null, connected: false, busy: false, abort: false };
+
+function log(text, cls){
+  const box = $('log');
+  if (box.dataset.init !== '1'){
+    box.innerHTML = ''; box.dataset.init = '1';
+  }
+  const span = document.createElement('span');
+  span.className = cls || '';
+  span.textContent = text;
+  box.appendChild(span);
+  while (box.childNodes.length > 400) box.removeChild(box.firstChild);
+  box.scrollTop = box.scrollHeight;
+}
+function updateSerialUI(){
+  const on = serial.connected;
+  $('pill').textContent = on ? '串口已连接' : '串口未连接';
+  $('pill').className = 'pill ' + (on ? 'ok' : '');
+  $('conn').disabled = on;
+  $('conn').classList.toggle('primary', !on);
+  $('disc').disabled = !on;
+  $('sendPath').disabled = !on || state.wps.length < 1;
+  $('sendManual').disabled = !on;
+  $('sendNL').disabled = !on;
+  $('abort').disabled = !serial.busy;
+  $('baud').disabled = on;
+}
+function serialHint(){
+  const el = $('serialHint');
+  if (!('serial' in navigator)){
+    el.innerHTML = '⚠ 当前上下文没有 Web Serial。用 Chrome/Edge，并且必须通过 <code>http://localhost</code> 打开'
+      + '（<code>file://</code> 双击打开时浏览器不提供串口）。在本文件目录下执行 '
+      + '<code>python -m http.server 8000</code>，再访问 <code>http://localhost:8000/smartcar-host.html</code>。';
+    return;
+  }
+  el.innerHTML = '点【连接串口】后浏览器会弹出端口选择框。<br>HC05 蓝牙模块按实测波特率选（你这套是 38400）；USB CDC 一般 115200。';
+}
+
+async function connect(){
+  if (!('serial' in navigator)){ toast('当前上下文不支持 Web Serial'); return; }
+  try{
+    const port = await navigator.serial.requestPort();
+    await port.open({ baudRate: parseInt($('baud').value, 10), dataBits: 8, stopBits: 1, parity: 'none', flowControl: 'none' });
+    serial.port = port; serial.connected = true;
+    log('✓ 已连接 @ ' + $('baud').value + ' bps\n', 'sy');
+    updateSerialUI();
+    readLoop();
+  } catch (err){
+    log('✗ 打开失败：' + err.message + '\n', 'er');
+    toast('串口打开失败');
+  }
+}
+
+async function readLoop(){
+  const dec = new TextDecoder();
+  while (serial.port && serial.port.readable){
+    let reader;
+    try { reader = serial.port.readable.getReader(); }
+    catch (err){ break; }
+    serial.reader = reader;
+    try{
+      while (true){
+        const { value, done } = await reader.read();
+        if (done) break;
+        if (value) log(dec.decode(value, { stream: true }), 'rx');
+      }
+    } catch (err){
+      // 拔线 / 断开
+    } finally {
+      try { reader.releaseLock(); } catch (err){}
+      serial.reader = null;
+    }
+  }
+}
+
+async function disconnect(){
+  try{
+    if (serial.reader){ try { await serial.reader.cancel(); } catch (err){} }
+    if (serial.writer){ try { serial.writer.releaseLock(); } catch (err){} serial.writer = null; }
+    if (serial.port){ await serial.port.close(); }
+  } catch (err){
+    log('断开时出错：' + err.message + '\n', 'er');
+  }
+  serial.port = null; serial.connected = false; serial.busy = false;
+  log('— 已断开 —\n', 'sy');
+  updateSerialUI();
+}
+
+function eol(){
+  const v = $('eol').value;
+  return v === '\\r\\n' ? '\r\n' : (v === '\\n' ? '\n' : '');
+}
+
+// 生成下发文本
+function protoText(){
+  const wps = state.wps;
+  const style = $('protoStyle').value, unit = $('protoUnit').value;
+  const k = unit === 'mm' ? 1000 : 1, dg = unit === 'mm' ? 0 : 4;
+  const nl = eol();
+  const one = q => (q.x * k).toFixed(dg) + ',' + (q.y * k).toFixed(dg) + ',' + q.heading_deg.toFixed(1);
+  if (style === 'compact'){
+    return 'PATH:' + wps.length + ':' + wps.map(one).join(';') + nl;
+  }
+  const lines = ['PATH,' + wps.length];
+  for (const q of wps) lines.push(one(q));
+  lines.push('PATH_END');
+  return lines.join(nl) + (nl || '\n');
+}
+
+function updateProto(){
+  const txt = state.wps.length ? protoText() : '';
+  $('proto').value = txt.length > 4000 ? txt.slice(0, 4000) + '\n… (预览截断)' : txt;
+  const bytes = new TextEncoder().encode(txt).length;
+  const baud = parseInt($('baud').value, 10) || 38400;
+  const secs = bytes * 10 / baud;
+  $('byteInfo').textContent = bytes + ' B，约 ' + (secs < 1 ? (secs * 1000).toFixed(0) + ' ms' : secs.toFixed(1) + ' s') + ' @ ' + baud;
+  $('sendPath').disabled = !serial.connected || state.wps.length < 1;
+}
+
+async function writeRaw(text, quiet){
+  if (!serial.writer){ log('✗ 未连接\n', 'er'); return false; }
+  try{
+    await serial.writer.write(new TextEncoder().encode(text));
+    if (!quiet) log('→ ' + text.replace(/\n/g, '⏎\n→ '), 'tx');
+    return true;
+  } catch (err){
+    log('✗ 发送失败：' + err.message + '\n', 'er');
+    return false;
+  }
+}
+
+async function sendPath(){
+  if (!serial.connected || !state.wps.length) return;
+  const chunk = clamp(parseInt($('chunk').value, 10) || 32, 1, 512);
+  const gap   = clamp(parseInt($('gap').value, 10) || 0, 0, 200);
+  const text  = protoText();
+  const bytes = new TextEncoder().encode(text);
+  serial.busy = true; serial.abort = false;
+  updateSerialUI();
+  log('→ 下发 ' + state.wps.length + ' 个航点，共 ' + bytes.length + ' B（' + chunk + ' B/' + gap + ' ms）\n', 'tx');
+  try{
+    for (let i = 0; i < bytes.length; i += chunk){
+      if (serial.abort){ log('■ 已中止于 ' + i + ' B\n', 'er'); break; }
+      await serial.writer.write(bytes.subarray(i, i + chunk));
+      $('prog').style.width = Math.round(Math.min(1, (i + chunk) / bytes.length) * 100) + '%';
+      if (gap) await sleep(gap);
+    }
+    const post = $('postCmd').value.trim();
+    if (!serial.abort && post){
+      await sleep(20);
+      await writeRaw(post + eol());
+    }
+    if (!serial.abort) log('✓ 下发完成\n', 'sy');
+  } catch (err){
+    log('✗ 发送中断：' + err.message + '\n', 'er');
+  }
+  serial.busy = false; serial.abort = false;
+  updateSerialUI();
+  setTimeout(() => { $('prog').style.width = '0'; }, 600);
+}
+
+/* ================= 事件绑定 ================= */
+$('scaleRange').addEventListener('input', e => { $('scaleNum').value = e.target.value; resetPlay(); recompute(false); });
+$('scaleNum').addEventListener('input', e => {
+  const v = clamp(parseFloat(e.target.value) || 5, 0.1, 500);
+  $('scaleRange').value = clamp(v, 1, 50);
+  resetPlay(); recompute(false);
+});
+function dropManual(){
+  if (state.manual){ state.manual = null; toast('已丢弃手动微调，回到自动采样'); }
+  resetPlay(); recompute(false);
+}
+$('spacing').addEventListener('input', dropManual);
+$('smooth').addEventListener('input', dropManual);
+$('speed').addEventListener('input', () => recompute(true));
+$('align').addEventListener('change', () => { resetPlay(); recompute(false); });
+$('chkOn').addEventListener('change', () => recompute(false));
+$('rmin').addEventListener('input', () => { recompute(false); });
+$('dmin').addEventListener('input', () => { recompute(false); });
+
+$('play').addEventListener('click', () => { play.on ? stopPlay() : startPlay(); });
+$('rewind').addEventListener('click', resetPlay);
+$('resample').addEventListener('click', () => {
+  state.manual = null; resetPlay(); recompute(false);
+  toast('已回到自动采样');
+});
+$('demo').addEventListener('click', () => {
+  resetPlay(); pushUndo();
+  const pts = [];
+  for (let t = 0; t <= 1.0001; t += 1 / 240){
+    pts.push({ x: 100 + t * 800, y: 350 + Math.sin(t * Math.PI * 2) * 190 });
+  }
+  state.strokes = [pts]; state.manual = null;
+  recompute(false);
+  toast('已载入示例轨迹');
+});
+$('clear').addEventListener('click', () => {
+  resetPlay(); pushUndo();
+  state.strokes = []; state.raw = []; state.manual = null;
+  state.canvasPts = []; state.wps = []; state.metrics = null; state.issues = []; state.hover = -1;
+  recompute(false);
+  toast('画布已清除');
+});
+$('undo').addEventListener('click', undo);
+
+$('copyJson').addEventListener('click', async () => {
+  const text = JSON.stringify(payload(), null, 2);
+  try{
+    await navigator.clipboard.writeText(text);
+    toast('已复制 ' + state.wps.length + ' 个航路点');
+  } catch (err){
+    window.prompt('自动复制失败，请手动复制：', text);
+  }
+});
+$('dlJson').addEventListener('click', () => {
+  download('path_plan.json', JSON.stringify(payload(), null, 2), 'application/json');
+  toast('已下载 path_plan.json');
+});
+$('dlH').addEventListener('click', () => {
+  download('path_plan.h', cHeader(), 'text/plain');
+  toast('已下载 path_plan.h');
+});
+
+$('conn').addEventListener('click', connect);
+$('disc').addEventListener('click', disconnect);
+$('baud').addEventListener('change', updateProto);
+$('protoStyle').addEventListener('change', updateProto);
+$('protoUnit').addEventListener('change', updateProto);
+$('eol').addEventListener('change', updateProto);
+$('sendPath').addEventListener('click', sendPath);
+$('abort').addEventListener('click', () => { serial.abort = true; });
+$('sendManual').addEventListener('click', () => {
+  const t = $('manual').value;
+  if (!t) return;
+  writeRaw(t + eol());
+  $('manual').value = '';
+});
+$('sendNL').addEventListener('click', () => writeRaw(eol() || '\n'));
+$('clearLog').addEventListener('click', () => {
+  $('log').innerHTML = '<span class="sy">— 串口日志 —</span>';
+});
+
+/* ==================================================================
+   本机服务（bridge.py）—— 串口在那个 Python 进程手里，页面走 HTTP
+   ------------------------------------------------------------------
+   页面自己也能用 Web Serial 直接发串口，但那样有两个问题：file:// 下
+   浏览器根本不给 navigator.serial，而且"发什么"和"车回了什么"得页面
+   自己拼协议。桥把这两件事都接过去了：页面只管把航点（米 / 度）丢过去，
+   剩下的换算、逐条 ack、心跳、进度遥测都在 Python 那边。
+   ================================================================== */
+const BR_MAX_POINTS = 128;      // 车上的 FOLLOW_MAX_POINTS
+const BR_ST = { idle:'空闲', load:'已装路径，待命', turn:'原地转向', settle:'稳定中',
+                drive:'直线行驶', done:'走完了', abort:'已中止' };
+const BR_AB = { 1:'遥控被打断', 2:'链路失联', 3:'IMU 没有数据了', 4:'航向偏差超限',
+                5:'堵住了（轮子不转）', 6:'没有解锁', 7:'参数不合法', 8:'单段超时' };
+
+const br = { on:false, down:false, since:0, fol:null, port:null,
+             busy:false, timer:0, legsMm:[], lastSt:'' };
+
+/* ================= 内置演示（静态托管用） =================
+   公网静态页没有本机 bridge 可连，这里在 brFetch 这一层把 /api/* 换成
+   页面内的模拟车。BR_DEMO.on 为 false 时完全不介入，接真车的路径不变。
+   行格式必须和 bridge.py 的 MockSerial 保持一致：
+     fol st=drive leg=1/30 d=845 yaw=123 err=12 ab=0
+     fol load n=31 seg=30 mm=5987
+     fol odo l=1234 r=1234 mm=617
+   ========================================================== */
+const BR_DEMO_BUILD = '2026-10-25';
+
+const BR_DEMO = (() => {
+  const LEG_MS = 3000, IDLE_MS = 2000, TICK_MS = 200, LINE_CAP = 4000;
+  const MAX_POINTS = BR_MAX_POINTS;
+  const STATIC_HOSTS = ['surge.sh', 'pages.dev', 'github.io', 'netlify.app',
+                        'vercel.app', 'web.app', 'firebaseapp.com'];
+  const M = { on:false, open:true, timer:0, lastEmit:0, lines:[], next:0,
+              pts:[], seg:0, leg:0, d:0, odo:0, phase:'idle', runAt:0,
+              fol:null, load:null, odom:null };
+  let touched = false;
+
+  const now = () => performance.now();
+  const stamp = () => Date.now() / 1000;
+
+  function isLocalHost(h){
+    h = String(h || '').toLowerCase().replace(/^\[|\]$/g, '');
+    return h === '' || h === 'localhost' || h.endsWith('.localhost')
+        || h === '127.0.0.1' || h === '::1' || h === '0.0.0.0'
+        || /^10\./.test(h) || /^192\.168\./.test(h)
+        || /^172\.(1[6-9]|2\d|3[01])\./.test(h)
+        || /^169\.254\./.test(h)
+        || /^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./.test(h)
+        || /^f[cd][0-9a-f]{2}:/.test(h) || /^fe80:/.test(h);
+  }
+  function isPublicOrigin(){
+    return /^https?:$/.test(location.protocol) && !isLocalHost(location.hostname);
+  }
+  function isStaticHost(){
+    const h = location.hostname.toLowerCase();
+    return STATIC_HOSTS.some(d => h === d || h.endsWith('.' + d));
+  }
+  function looksLocalUrl(s){
+    try { return isLocalHost(new URL(s).hostname); } catch (_){ return true; }
+  }
+
+  function reset(){
+    M.open = true; M.phase = 'idle'; M.pts = []; M.seg = 0; M.leg = 0;
+    M.d = 0; M.odo = 0; M.runAt = 0;
+    M.fol = null; M.load = null; M.odom = null;
+    M.lines = []; M.next = 0;
+  }
+  function add(s, dir){
+    M.lines.push({ i: M.next++, t: stamp(), s: String(s), dir: dir || 'in' });
+    if (M.lines.length > LINE_CAP) M.lines.splice(0, M.lines.length - LINE_CAP);
+  }
+  function emit(stName, leg, d){
+    const yaw = (leg >= 0 && leg < M.pts.length) ? M.pts[leg][2] : 0;
+    const raw = 'fol st=' + stName + ' leg=' + leg + '/' + M.seg
+              + ' d=' + d + ' yaw=' + yaw + ' err=12 ab=0';
+    add(raw, 'in');
+    M.fol = { st:stName, leg:leg, seg:M.seg, d:d, yaw:yaw, err:12, ab:0,
+              raw:raw, t:stamp() };
+  }
+  function legMm(i){
+    if (i < 1 || i >= M.pts.length) return 0;
+    return Math.trunc(Math.hypot(M.pts[i][0] - M.pts[i-1][0],
+                                 M.pts[i][1] - M.pts[i-1][1]));
+  }
+  function sumLegs(n){
+    let s = 0;
+    for (let i = 1; i <= n; i++) s += legMm(i);
+    return s;
+  }
+  function emitLoad(){
+    const mm = sumLegs(M.seg);
+    const raw = 'fol load n=' + M.pts.length + ' seg=' + M.seg + ' mm=' + mm;
+    add(raw, 'in');
+    M.load = { n:M.pts.length, seg:M.seg, mm:mm, raw:raw, t:stamp() };
+  }
+  function emitOdo(){
+    const mm = Math.floor(M.odo / 2);
+    const raw = 'fol odo l=' + M.odo + ' r=' + M.odo + ' mm=' + mm;
+    add(raw, 'in');
+    M.odom = { l:M.odo, r:M.odo, mm:mm, raw:raw, t:stamp() };
+  }
+  function emitCurrent(){
+    if (M.phase === 'run' && M.seg > 0){
+      const cycle = (now() - M.runAt) / LEG_MS;
+      const leg = Math.min(Math.floor(cycle) + 1, M.seg);
+      const frac = cycle - Math.floor(cycle);
+      const st = frac < 0.25 ? 'turn' : (frac < 0.35 ? 'settle' : 'drive');
+      const d = st === 'drive'
+              ? Math.floor((frac - 0.35) / 0.65 * legMm(leg)) : 0;
+      M.leg = leg; M.d = d; M.odo = d + sumLegs(leg - 1);
+      emit(st, leg, d);
+    } else if (M.phase === 'done') emit('done', M.leg, 0);
+    else if (M.phase === 'load') emit('load', 0, 0);
+    else emit('idle', 0, 0);
+  }
+  function tick(){
+    if (!M.on) return;
+    const t = now();
+    if (M.phase === 'run' && M.seg > 0){
+      const cycle = (t - M.runAt) / LEG_MS;
+      if (cycle >= M.seg){
+        M.phase = 'done'; M.leg = M.seg; M.d = 0;
+        emit('done', M.leg, 0); M.lastEmit = t; return;
+      }
+      const leg = Math.floor(cycle) + 1;
+      const frac = cycle - Math.floor(cycle);
+      let st = 'drive', d = 0;
+      if (frac < 0.25) st = 'turn';
+      else if (frac < 0.35) st = 'settle';
+      else d = Math.floor((frac - 0.35) / 0.65 * legMm(leg));
+      M.leg = leg; M.d = d;
+      M.odo = d + sumLegs(leg - 1);
+      emit(st, leg, d); M.lastEmit = t;
+    } else if (t - M.lastEmit >= IDLE_MS){
+      emitCurrent(); M.lastEmit = t;
+    }
+  }
+  function startTimer(){
+    stopTimer();
+    M.lastEmit = now();
+    M.timer = setInterval(tick, TICK_MS);
+  }
+  function stopTimer(){ if (M.timer){ clearInterval(M.timer); M.timer = 0; } }
+
+  function startRun(){
+    if (M.seg < 1) return false;
+    M.phase = 'run'; M.runAt = now(); M.leg = 1; M.d = 0; M.odo = 0;
+    emit('turn', 1, 0); M.lastEmit = now();
+    return true;
+  }
+  function stopRun(){
+    M.phase = 'idle'; M.leg = 0; M.d = 0;
+    emit('idle', 0, 0); M.lastEmit = now();
+  }
+
+  function applyPath(body){
+    const list = Array.isArray(body.points) ? body.points : [];
+    if (list.length < 2) return { ok:false, error:'至少要有 2 个航点' };
+    if (list.length > MAX_POINTS)
+      return { ok:false, error:'这条轨迹有 ' + list.length + ' 个点，超过上限 '
+              + MAX_POINTS + ' 个' };
+    const pts = [];
+    for (let i = 0; i < list.length; i++){
+      const q = list[i] || {};
+      const x = Number(q.x), y = Number(q.y), h = Number(q.heading_deg);
+      if (!isFinite(x) || !isFinite(y) || !isFinite(h))
+        return { ok:false, error:'第 ' + (i + 1) + ' 个点的坐标不是有限数' };
+      const xm = Math.round(x * 1000), ym = Math.round(y * 1000);
+      const hd = Math.round(h * 10);
+      if (Math.abs(xm) > 20000 || Math.abs(ym) > 20000)
+        return { ok:false, error:'第 ' + (i + 1) + ' 个点超出 ±20 m' };
+      if (Math.abs(hd) > 1800)
+        return { ok:false, error:'第 ' + (i + 1) + ' 个点航向超出 ±180°' };
+      pts.push([xm, ym, hd]);
+    }
+    add('#follow begin ' + pts.length, 'out'); add('ok follow', 'in');
+    for (const p of pts){
+      add('#follow wp ' + p[0] + ' ' + p[1] + ' ' + p[2], 'out');
+      add('ok follow', 'in');
+    }
+    add('#follow end', 'out'); add('ok follow', 'in');
+
+    M.pts = pts; M.seg = pts.length - 1; M.leg = 0; M.d = 0; M.odo = 0;
+    M.phase = 'load'; M.fol = null;
+    emitLoad();
+
+    const mode = body.mode === 'cont' ? 'cont' : 'stop';
+    const autostart = body.start !== false;
+    if (autostart){
+      add('#follow start ' + mode, 'out'); add('ok follow', 'in');
+      startRun();
+    }
+    return { ok:true, result:{ sent:pts.length, mode:mode,
+                               autostart:autostart, load:M.load } };
+  }
+
+  function follow(body){
+    const cmd = String(body.cmd || '');
+    if (cmd === 'stop'){
+      add('#follow stop', 'out'); add('ok follow', 'in'); stopRun();
+      return { ok:true, ack:'ok follow' };
+    }
+    if (cmd === 'start' || cmd === 'cont'){
+      add('#follow start ' + cmd, 'out');
+      if (!startRun()){ add('err follow', 'in');
+                        return { ok:false, error:'还没有装入航点' }; }
+      add('ok follow', 'in');
+      return { ok:true, ack:'ok follow' };
+    }
+    if (cmd === 'status'){
+      add('#follow status', 'out'); add('ok follow', 'in'); emitCurrent();
+      return { ok:true, ack:'ok follow' };
+    }
+    if (cmd === 'odom'){
+      add('#follow odom', 'out'); add('ok follow', 'in'); emitOdo();
+      return { ok:true, ack:'ok follow' };
+    }
+    return { ok:false, error:'不认识的 follow 命令：' + cmd };
+  }
+
+  function send(body){
+    let line = String(body.line || '').trim();
+    if (line.charAt(0) === '#') line = line.slice(1).trim();
+    if (!line) return { ok:false, error:'空命令' };
+    add('#' + line, 'out');
+    const parts = line.split(/\s+/);
+    const name = parts[0], sub = parts[1] || '';
+    if (name === 'follow'){
+      if (sub === 'ping') return { ok:true, ack:'' };   // 固件不回心跳
+      if (sub === 'start' || sub === 'cont'){
+        if (!startRun()){ add('err follow', 'in');
+                          return { ok:false, error:'还没有装入航点' }; }
+      } else if (sub === 'stop') stopRun();
+      else if (sub === 'status') emitCurrent();
+      else if (sub === 'odom') emitOdo();
+      add('ok follow', 'in');
+      return { ok:true, ack:'ok follow' };
+    }
+    if (['bt','head','motor','spd','on','off','rate','margin','tol','kp',
+         'lead','vmin','vmax','sign'].indexOf(name) >= 0){
+      add('ok ' + name, 'in');
+      return { ok:true, ack:'ok ' + name };
+    }
+    add('err ' + name, 'in');
+    return { ok:false, error:'命令不认识：' + name };
+  }
+
+  function snapshot(){
+    return { ok:true, open:M.open, port:'MOCK', baud:115200, mock:true,
+             link_ms:1000, lines:M.next,
+             fol:M.fol, load:M.load, odo:M.odom,
+             target_port:'MOCK', reconnecting:false, reconnect_count:0,
+             retry_in_ms:0, last_error:null };
+  }
+
+  function route(path, body){
+    const p = String(path || '');
+    if (p.indexOf('/api/state') === 0) return snapshot();
+    if (p.indexOf('/api/lines') === 0){
+      const m = p.match(/[?&]since=(-?\d+)/);
+      const since = m ? (parseInt(m[1], 10) || 0) : 0;
+      return { ok:true, next:M.next, lines:M.lines.filter(l => l.i >= since) };
+    }
+    if (p.indexOf('/api/ports') === 0) return { ok:true, ports:[] };
+    if (p.indexOf('/api/connect') === 0){
+      M.open = true; add('open', 'out'); add('ok connect', 'in');
+      return { ok:true, state:snapshot() };
+    }
+    if (p.indexOf('/api/disconnect') === 0){
+      M.open = false; stopTimer();
+      return { ok:true, result:{ closed:true }, state:snapshot() };
+    }
+    if (p.indexOf('/api/path') === 0) return applyPath(body || {});
+    if (p.indexOf('/api/follow') === 0) return follow(body || {});
+    if (p.indexOf('/api/send') === 0) return send(body || {});
+    return { ok:false, error:'没有这个路径：' + p };
+  }
+
+  async function probeOrigin(ms){
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), ms);
+    try{
+      const r = await window.fetch(location.origin + '/api/state?demo_probe=1',
+                                  { cache:'no-store', signal:ctl.signal });
+      const j = await r.json();
+      return !!(j && j.ok === true);
+    } catch (_){ return false; }
+    finally { clearTimeout(timer); }
+  }
+
+  function setBar(note, label){
+    const bar = $('demoBar');
+    bar.hidden = false;
+    bar.title = 'build ' + BR_DEMO_BUILD;
+    $('demoNote').innerHTML = note;
+    $('demoToggle').textContent = label;
+  }
+  function showDisabled(){
+    setBar('<b>演示已关闭</b>：这台页面不会自动进入演示。', '启用内置演示');
+    if (isPublicOrigin()) $('brUrl').value = '';
+    $('brHint').textContent = '演示已关闭。要接真车请填桥地址；要恢复演示点上方横幅。';
+  }
+
+  function enter(){
+    if (M.on) return;
+    M.on = true;
+    try { sessionStorage.removeItem('smartcar.demo.optOut'); } catch (_){}
+    reset();
+    setBar('<b>演示模式</b>：后台是页面内置的模拟车，没有连接任何真车。', '连接真车桥');
+    $('brPort').value = '';
+    $('brUrl').value = '';
+    $('brHint').textContent = '演示模式启动中 ……';
+    if (state.wps.length < 2){ const d = $('demo'); if (d) d.click(); }
+    emit('idle', 0, 0);
+    startTimer();
+    brConnect();
+  }
+
+  function leave(){
+    M.on = false;
+    stopTimer();
+    brStopPoll();
+    br.on = false; br.down = false; br.port = null; br.fol = null;
+    br.since = 0; br.lastSt = '';
+    try { sessionStorage.setItem('smartcar.demo.optOut', '1'); } catch (_){}
+    setBar('<b>演示已关闭</b>：这台页面不会自动进入演示。', '启用内置演示');
+    $('brUrl').value = (location.protocol === 'file:') ? 'http://localhost:8000'
+                     : (isPublicOrigin() ? '' : location.origin);
+    $('brHint').textContent = '演示已关闭。要接真车请填桥地址；要恢复演示点上方横幅。';
+    brUI(); brRender();
+  }
+
+  async function boot(){
+    const q = new URLSearchParams(location.search);
+    const hash = (location.hash || '').replace(/^#/, '');
+    const force = q.get('demo') === '1' || hash === 'demo=1';
+    const deny = q.get('demo') === '0' || hash === 'demo=0';
+    let optOut = false;
+    try { optOut = sessionStorage.getItem('smartcar.demo.optOut') === '1'; } catch (_){}
+    $('demoBar').title = 'build ' + BR_DEMO_BUILD;
+
+    if (force){ enter(); return; }
+    if (deny || optOut){ showDisabled(); return; }
+    if (!isPublicOrigin()) return;           // 本机 / 局域网 / file:// 保持原样
+    if (isStaticHost()){ enter(); return; }  // 静态托管：不用探测
+
+    $('brHint').textContent = '正在检测同源本机服务 ……';
+    const sameOriginBridge = await probeOrigin(1500);
+    if (M.on || touched) return;             // 探测期间用户已经接管
+    if (sameOriginBridge){
+      $('brUrl').value = location.origin;
+      $('brHint').innerHTML = '检测到同源本机服务，点【连接本机服务】即可。';
+    } else {
+      enter();
+    }
+  }
+
+  return {
+    get on(){ return M.on; },
+    fetch: route,
+    enter: enter,
+    leave: leave,
+    boot: boot,
+    isPublicOrigin: isPublicOrigin,
+    looksLocalUrl: looksLocalUrl,
+    markTouched(){ touched = true; },
+    isTouched(){ return touched; }
+  };
+})();
+
+function brUrl(){
+  return ($('brUrl').value || 'http://localhost:8000').trim().replace(/\/+$/, '');
+}
+
+async function brFetch(path, body){
+  if (BR_DEMO.on) return BR_DEMO.fetch(path, body);
+  const opt = body ? { method:'POST', headers:{ 'Content-Type':'application/json' },
+                       body: JSON.stringify(body) } : {};
+  const r = await fetch(brUrl() + path, opt);
+  const text = await r.text();
+  try { return JSON.parse(text); }
+  catch (err){
+    throw new Error('服务返回的不是 JSON（HTTP ' + r.status + '）：' + text.slice(0, 120));
+  }
+}
+
+function brLogLine(l){
+  const box = $('brLog');
+  if (box.dataset.init !== '1'){ box.innerHTML = ''; box.dataset.init = '1'; }
+  if (l.dir === 'in' && l.s.startsWith('fol st=')){
+    // 跑动时 200ms 一条，全记下来会把日志冲掉；只在状态词变化时留一条
+    const st = l.s.split(' ')[1].slice(3);
+    if (st === br.lastSt) return;
+    br.lastSt = st;
+  }
+  const span = document.createElement('span');
+  span.className = l.dir === 'out' ? 'tx' : (l.s.startsWith('err ') ? 'er' : 'rx');
+  span.textContent = (l.dir === 'out' ? '» ' : '« ') + l.s + '\n';
+  box.appendChild(span);
+  while (box.childNodes.length > 400) box.removeChild(box.firstChild);
+  box.scrollTop = box.scrollHeight;
+}
+
+function brUI(){
+  const badge = $('brBadge');
+  if (!br.on){ badge.textContent = '未连接'; badge.className = 'badge'; }
+  else if (br.down){ badge.textContent = '桥已断开'; badge.className = 'badge warn'; }
+  else if (!br.port){ badge.textContent = '桥通 · 串口没开'; badge.className = 'badge warn'; }
+  else { badge.textContent = (BR_DEMO.on ? '演示 · ' : '') + br.port; badge.className = 'badge ok'; }
+
+  $('brConn').textContent = BR_DEMO.on ? '重新连接演示' : '连接本机服务';
+  $('brConn').disabled = br.on && !br.down;
+  $('brConn').classList.toggle('primary', !br.on || br.down);
+  $('brDisc').disabled = !br.on;
+
+  const ready = br.on && !br.down && !!br.port && !br.busy;
+  $('brSend').disabled = !ready || state.wps.length < 1;
+  $('brLoad').disabled = !ready || state.wps.length < 1;
+  $('brStop').disabled = !ready;
+}
+
+/* 每段多长，从当前航点自己算（mm）。遥测里只报"本段走了多少"，
+   总进度得页面自己按段长拼出来 —— 下载时快照一份，免得之后改画布对不上。 */
+function brLegsMm(){
+  const w = state.wps, out = [];
+  for (let i = 1; i < w.length; i++)
+    out.push(Math.hypot((w[i].x - w[i-1].x) * 1000, (w[i].y - w[i-1].y) * 1000));
+  return out;
+}
+
+function brRender(){
+  const f = br.fol, el = $('brFol'), bar = $('brProg');
+  if (!f){ el.textContent = '— 还没有状态 —'; bar.style.width = '0%'; return; }
+
+  const legs = br.legsMm, total = legs.reduce((a, b) => a + b, 0);
+  let pct;
+  if (f.st === 'done') pct = 100;
+  else if (f.st === 'abort') pct = 0;
+  else if (total > 0){
+    let done = 0;
+    for (let i = 1; i < f.leg && i <= legs.length; i++) done += legs[i - 1];
+    done += Math.min(f.d, legs[f.leg - 1] || 0);
+    pct = clamp(done / total * 100, 0, 100);
+  } else if (f.seg > 0){
+    pct = clamp((f.leg - 1) / f.seg * 100, 0, 100);
+  } else pct = 0;
+  bar.style.width = pct.toFixed(1) + '%';
+
+  const bits = ['<b>' + (BR_ST[f.st] || f.st) + '</b>'];
+  if (f.seg > 0) bits.push('第 ' + f.leg + '/' + f.seg + ' 段');
+  if (f.st === 'drive' || f.st === 'settle'){
+    const L = legs[f.leg - 1];
+    bits.push('本段 ' + f.d + (L ? ' / ' + Math.round(L) : '') + ' mm');
+  }
+  if (f.st !== 'idle' && f.st !== 'load'){
+    bits.push('航向偏差 ' + (f.err / 10).toFixed(1) + '°');
+    bits.push('yaw ' + (f.yaw / 10).toFixed(1) + '°');
+  }
+  if (f.st === 'abort')
+    bits.push('<span class="warn">⚠ ' + (BR_AB[f.ab] || ('中止码 ' + f.ab)) + '</span>');
+  bits.push(pct.toFixed(0) + '%');
+  el.innerHTML = bits.join('　·　');
+}
+
+function brApplyState(st){
+  br.port = st.open ? st.port : null;
+  br.fol = st.fol;
+  if (BR_DEMO.on){
+    $('brHint').innerHTML = '演示模式：页面内置的模拟车（<b>MOCK</b>），没有连接任何真车。'
+      + '点【下发并开跑】看跟随效果；接真车请点顶部横幅的【连接真车桥】。';
+  } else if (st.open){
+    $('brHint').innerHTML = '桥在 <b>' + brUrl() + '</b>，串口 <b>' + st.port + '</b> @ ' + st.baud
+      + (st.mock ? '（<b>mock 模式</b>：没接真板子，车那一半是本地模拟的）' : '')
+      + '，失联急停 ' + (st.link_ms ? st.link_ms + ' ms'
+                                    : '<span class="warn">未开启</span>') + '。';
+  } else if (st.reconnecting){
+    $('brHint').innerHTML = '桥在 <b>' + brUrl() + '</b>，串口 <b>' + (st.target_port || '?')
+      + '</b> <b>正在后台重连</b>'
+      + (st.reconnect_count ? '（已自动重连 ' + st.reconnect_count + ' 次）' : '')
+      + (st.retry_in_ms ? '，' + Math.ceil(st.retry_in_ms / 1000) + ' 秒后重试' : '')
+      + (st.last_error ? '<br><span class="warn">上次失败：' + st.last_error + '</span>' : '')
+      + '<br>重连只补发 <code>rate</code> / <code>bt link</code>，'
+      + '<b>不会自动重发路径或【开始】</b>；车那边的失联急停会把它刹住。';
+  } else {
+    $('brHint').innerHTML = '桥在 <b>' + brUrl() + '</b>，但<b>串口没打开</b>：在上面填个 COM 口再点【连接本机服务】，'
+      + '或者启动桥的时候带上 <code>--port COM14</code>。';
+  }
+  brUI();
+  brRender();
+}
+
+function brDown(why){
+  if (!br.on || br.down) return;
+  br.down = true; br.port = null;
+  brStopPoll();
+  $('brHint').innerHTML = '⚠ ' + why
+    + '。注意：<b>车上的跟随不会自己停</b>（除非开着失联急停），要停车得按遥控器上的刹车。'
+    + '重新启动 bridge.py 之后点【连接本机服务】。';
+  brUI();
+}
+
+function brStartPoll(){
+  brStopPoll();
+  br.timer = setInterval(brPoll, 400);
+  brPoll();
+}
+function brStopPoll(){ if (br.timer){ clearInterval(br.timer); br.timer = 0; } }
+
+async function brPoll(){
+  if (!br.on || br.down || br.busy) return;
+  try{
+    const ln = await brFetch('/api/lines?since=' + br.since);
+    if (ln.next > br.since){
+      for (const l of ln.lines) brLogLine(l);
+      br.since = ln.next;
+    }
+    brApplyState(await brFetch('/api/state'));
+  } catch (err){
+    brDown('和本机服务断了（' + err.message + '）');
+  }
+}
+
+async function brConnect(){
+  BR_DEMO.markTouched();
+  if (!BR_DEMO.on && BR_DEMO.isPublicOrigin()){
+    const raw = $('brUrl').value.trim();
+    if (!raw){
+      toast('公网页面不会默认连 localhost；请填你真车桥的地址，或在本机打开页面');
+      $('brUrl').focus();
+      return;
+    }
+    if (BR_DEMO.looksLocalUrl(raw))
+      toast('注意：公网 HTTPS 页面通常会被浏览器拦到 http/localhost；真车请用本机页面');
+  }
+  $('brHint').textContent = BR_DEMO.on ? '正在启动内置演示 ……'
+                                       : '正在连 ' + brUrl() + ' ……';
+  try{
+    let st = await brFetch('/api/state');
+    br.on = true; br.down = false;
+    // 桥正在后台重连时别再去 POST /api/connect：那会立刻失败并把页面打成「连不上」，
+    // 而实际上它几秒后自己就能连上。
+    if (!st.open && !st.reconnecting){
+      const port = $('brPort').value.trim();
+      const r = await brFetch('/api/connect', port ? { port } : {});
+      if (!r.ok) throw new Error(r.error);
+      st = await brFetch('/api/state');
+    }
+    br.since = 0;
+    br.lastSt = '';
+    $('brLog').innerHTML = '<span class="sy">— 车 → 页面 —</span>';
+    $('brLog').dataset.init = '1';
+    brApplyState(st);
+    brStartPoll();
+    toast(BR_DEMO.on ? '演示模式已就绪' : '本机服务已连接');
+  } catch (err){
+    br.on = false; br.port = null;
+    $('brHint').innerHTML = '连不上 <b>' + brUrl() + '</b>：' + err.message
+      + '<br>桥启动了没？在 <code>D:\\NXP</code> 下跑 <code>python bridge.py --port COM14</code>'
+      + '（没接板子就加 <code>--mock</code>），然后浏览器开它打印出来的那个地址。';
+    brUI();
+  }
+}
+
+function brDisconnect(){
+  // 只断开"页面 ← 桥"这一层，桥和串口都还在跑。故意不调 /api/disconnect：
+  // 关掉串口会让桥停止发心跳，车上开着失联急停的话 1 秒后就把车刹了 ——
+  // 点"断开"不该顺手把车急停掉。要停车用【停车】，要收工去 Ctrl-C 桥。
+  br.on = false; br.down = false; br.port = null;
+  brStopPoll();
+  brUI(); brRender();
+  toast(BR_DEMO.on
+    ? '已断开演示连接；内置模拟车仍在后台，点横幅可回到演示'
+    : '已断开本机服务。桥和串口还在跑，车继续按最后的指令走 —— 要停车点【停车】或按遥控刹车');
+}
+
+function brPreflight(){
+  const n = state.wps.length;
+  if (n < 2) return '至少要有 2 个航点';
+  if (n > BR_MAX_POINTS)
+    return '这条轨迹采样出 ' + n + ' 个点，超过车上的上限 ' + BR_MAX_POINTS + ' 个。'
+      + '把【采样间距】调大再画 —— 车是靠航向走的，点稀疏不会让轨迹变差，'
+      + '但点太密会把蓝牙链路和车的接收缓冲压垮。';
+  if ($('chkOn').checked && state.issues.length){
+    const list = state.issues.slice(0, 5)
+      .map(x => '第 ' + (x.i + 1) + ' 点：' + x.msg).join('\n');
+    if (!confirm('可行驶性校验有 ' + state.issues.length + ' 处问题：\n' + list
+                 + '\n\n车没有位置传感器，急弯它跟不出来。仍然要下发吗？'))
+      return '已取消：轨迹没通过可行驶性校验';
+  }
+  return null;
+}
+
+async function brSend(start){
+  if (br.busy) return;
+  const bad = brPreflight();
+  if (bad){ toast('没下发：' + bad); return; }
+  if (!br.on || br.down || !br.port){ toast('先连上本机服务'); return; }
+
+  br.busy = true; brUI();
+  br.legsMm = brLegsMm();
+  const pts = state.wps.map(q => ({ x:q.x, y:q.y, heading_deg:q.heading_deg }));
+  try{
+    const r = await brFetch('/api/path', {
+      points: pts, mode: $('brMode').value,
+      speed: clamp(parseInt($('brSpeed').value, 10) || 0, 0, 800), start: start,
+    });
+    if (!r.ok) throw new Error(r.error);
+    toast('已下发 ' + r.result.sent + ' 个航点'
+          + (start ? '，车开始走' : '，等 start'));
+  } catch (err){
+    toast('下发失败：' + err.message);
+  } finally {
+    br.busy = false;
+    brUI();
+  }
+}
+
+async function brStopRun(){
+  try{
+    const r = await brFetch('/api/follow', { cmd:'stop' });
+    if (!r.ok) throw new Error(r.error);
+    toast('已让车停下');
+  } catch (err){
+    toast('停车指令没送到：' + err.message);
+  }
+}
+
+async function brCmdSend(line){
+  const text = (line || $('brCmd').value).trim();
+  if (!text) return;
+  if (!br.on || br.down || !br.port){ toast('先连上本机服务'); return; }
+  try{
+    const r = await brFetch('/api/send', { line: text });
+    if (!r.ok) throw new Error(r.error);
+    if (!line) $('brCmd').value = '';
+    // 车真正打印的内容在下面那个框里（下一轮轮询就拉回来），这里只报 ack
+    toast(r.ack);
+  } catch (err){
+    toast('发送失败：' + err.message);
+  }
+}
+
+$('brConn').addEventListener('click', brConnect);
+$('brDisc').addEventListener('click', brDisconnect);
+$('brSend').addEventListener('click', () => brSend(true));
+$('brLoad').addEventListener('click', () => brSend(false));
+$('brStop').addEventListener('click', brStopRun);
+$('brCmdSend').addEventListener('click', () => brCmdSend());
+$('brUnlock').addEventListener('click', () => brCmdSend('bt unlock'));
+$('brOdom').addEventListener('click', () => brCmdSend('follow odom'));
+$('brCmd').addEventListener('keydown', e => { if (e.key === 'Enter') brCmdSend(); });
+$('demoToggle').addEventListener('click', () => {
+  if (BR_DEMO.on) BR_DEMO.leave(); else BR_DEMO.enter();
+});
+
+document.addEventListener('keydown', e => {
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z'){ e.preventDefault(); undo(); }
+});
+window.addEventListener('resize', resize);
+if (window.matchMedia) window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', draw);
+if ('serial' in navigator){
+  navigator.serial.addEventListener('disconnect', () => {
+    if (serial.connected){ serial.connected = false; serial.port = null; log('— 设备已拔出 —\n', 'er'); updateSerialUI(); }
+  });
+}
+
+/* ================= 启动 ================= */
+resize();
+serialHint();
+updateSerialUI();
+// 页面本来就是桥托管出来的 —— 桥的地址就是页面自己的地址。
+// 手机访问时这条尤其关键：手机上的 localhost 指的是手机自己，
+// 只有按"页面是从哪来的"去填，才找得到 PC 上那个桥。
+if (location.protocol === 'http:' || location.protocol === 'https:')
+  $('brUrl').value = BR_DEMO.isPublicOrigin() ? '' : location.origin;
+$('brHint').innerHTML = '还没连。先在 <code>D:\\NXP</code> 下启动桥：'
+  + '<code>python bridge.py --port COM14</code>（没接板子加 <code>--mock</code>），'
+  + '地址要填它打印出来的那个（默认 8000 端口）。';
+brUI();
+recompute(false);
+BR_DEMO.boot();
+})();
+</script>
+</body>
+</html>

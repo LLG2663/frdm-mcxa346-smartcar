@@ -1,0 +1,38 @@
+MIT License
+
+Copyright (c) 2026 LLG2663
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+---
+
+适用范围（中文说明）
+
+仓库根目录的 LICENSE 是 RT-Thread 的 Apache License 2.0，覆盖 RT-Thread 内核、
+组件、BSP 框架代码，以及 NXP MCUXpresso Config Tools 生成的代码（这些文件的
+文件头另有各自的版权与许可声明）。
+
+本文件（MIT）只覆盖以下由本项目作者编写或改写的部分：
+
+- bsp/nxp/mcx/mcxa/frdm-mcxa346/applications/ 目录下的文件，
+  但 drv_spi_sample_rw007.c 除外（该文件派生自 RT-Thread 示例，按 Apache-2.0 授权）；
+- host/ 目录下的全部文件（smartcar-host.html、bridge.py、start-host.bat）。
+
+部分模块移植或改写自 TI MSPM0G3507 的 CCS 工程（workspace_ccstheia/113），
+出处见各文件头部注释；再分发前请自行确认源工程的使用条款。

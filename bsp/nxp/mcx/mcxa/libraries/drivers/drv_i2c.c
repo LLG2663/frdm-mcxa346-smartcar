@@ -1,0 +1,220 @@
+/*
+ * Copyright (c) 2006-2024 RT-Thread Development Team
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * Change Logs:
+ * Date           Author       Notes
+ * 2023-08-21     hywing       The first version
+ */
+
+#include <rtdevice.h>
+#include "fsl_lpi2c.h"
+#include "fsl_lpi2c_edma.h"
+#include "fsl_edma.h"
+
+
+#ifdef RT_USING_I2C
+
+#define DBG_TAG    "drv.i2c"
+#define DBG_LVL    DBG_INFO
+#include <rtdbg.h>
+
+#if (defined(CPU_MCXA346VLH) || defined(CPU_MCXA346VLL) || defined(CPU_MCXA346VLQ) || defined(CPU_MCXA346VPN) || \
+     defined(CPU_MCXA366VLH) || defined(CPU_MCXA366VLL) || defined(CPU_MCXA366VLQ) || defined(CPU_MCXA366VPN))
+#define MCXA_I2C_USE_FRO_LF_DIV
+#endif
+
+enum
+{
+#ifdef BSP_USING_I2C0
+    I2C0_INDEX,
+#endif
+#ifdef BSP_USING_I2C1
+    I2C1_INDEX,
+#endif
+#ifdef BSP_USING_I2C2
+    I2C2_INDEX,
+#endif
+#ifdef BSP_USING_I2C3
+    I2C3_INDEX,
+#endif
+};
+
+
+struct lpc_i2c_bus
+{
+    struct rt_i2c_bus_device    parent;
+    LPI2C_Type                  *I2C;
+    clock_attach_id_t           clock_attach_id;
+    clock_div_name_t            clock_div_name;
+    clock_name_t                clock_src;
+    clock_ip_name_t             clock_gate;
+    uint32_t                    baud;
+    char                        *name;
+};
+
+
+struct lpc_i2c_bus lpc_obj[] =
+{
+#ifdef BSP_USING_I2C0
+        {
+            .I2C = LPI2C0,
+            .baud = 100000U,
+#if defined(MCXA_I2C_USE_FRO_LF_DIV)
+            .clock_attach_id = kFRO_LF_DIV_to_LPI2C0,
+#else
+            .clock_attach_id = kFRO12M_to_LPI2C0,
+#endif
+            .clock_div_name = kCLOCK_DivLPI2C0,
+            .clock_src = kCLOCK_Fro12M,
+            .clock_gate = kCLOCK_GateLPI2C0,
+            .name = "i2c0",
+        },
+#endif
+#ifdef BSP_USING_I2C1
+        {
+            .I2C = LPI2C1,
+            .baud = 100000U,
+#if defined(MCXA_I2C_USE_FRO_LF_DIV)
+            .clock_attach_id = kFRO_LF_DIV_to_LPI2C1,
+#else
+            .clock_attach_id = kFRO12M_to_LPI2C1,
+#endif
+            .clock_div_name = kCLOCK_DivLPI2C1,
+            .clock_src = kCLOCK_Fro12M,
+            .clock_gate = kCLOCK_GateLPI2C1,
+            .name = "i2c1",
+        },
+#endif
+#ifdef BSP_USING_I2C2
+        {
+            .I2C = LPI2C2,
+            .baud = 100000U,
+#if defined(MCXA_I2C_USE_FRO_LF_DIV)
+            .clock_attach_id = kFRO_LF_DIV_to_LPI2C2,
+#else
+            .clock_attach_id = kFRO12M_to_LPI2C2,
+#endif
+            .clock_div_name = kCLOCK_DivLPI2C2,
+            .clock_src = kCLOCK_Fro12M,
+            .clock_gate = kCLOCK_GateLPI2C2,
+            .name = "i2c2",
+        },
+#endif
+#ifdef BSP_USING_I2C3
+        {
+            .I2C = LPI2C3,
+            .baud = 100000U,
+#if defined(MCXA_I2C_USE_FRO_LF_DIV)
+            .clock_attach_id = kFRO_LF_DIV_to_LPI2C3,
+#else
+            .clock_attach_id = kFRO12M_to_LPI2C3,
+#endif
+            .clock_div_name = kCLOCK_DivLPI2C3,
+            .clock_src = kCLOCK_Fro12M,
+            .clock_gate = kCLOCK_GateLPI2C3,
+            .name = "i2c3",
+        },
+#endif
+};
+
+static rt_ssize_t lpc_i2c_xfer(struct rt_i2c_bus_device *bus, struct rt_i2c_msg msgs[], rt_uint32_t num)
+{
+    struct rt_i2c_msg *msg;
+    lpi2c_master_transfer_t xfer = {0};
+    rt_uint32_t i;
+    rt_ssize_t ret = 0;
+
+    struct lpc_i2c_bus *lpc_i2c = (struct lpc_i2c_bus *)bus;
+
+    for (i = 0; i < num; i++)
+    {
+        msg = &msgs[i];
+
+        if (msg->flags & RT_I2C_RD)
+        {
+            xfer.slaveAddress = msg->addr;
+            xfer.direction = kLPI2C_Read;
+            xfer.subaddress = 0;
+            xfer.subaddressSize = 0;
+            xfer.data = msg->buf;
+            xfer.dataSize = msg->len;
+            if(i != 0)
+                xfer.flags = kLPI2C_TransferRepeatedStartFlag;
+            else
+                xfer.flags = kLPI2C_TransferDefaultFlag;
+
+            if (LPI2C_MasterTransferBlocking(lpc_i2c->I2C, &xfer) != kStatus_Success)
+            {
+                LOG_D("i2c bus read failed!\n");
+                return i;
+            }
+        }
+        else
+        {
+            xfer.slaveAddress = msg->addr;
+            xfer.direction = kLPI2C_Write;
+            xfer.subaddress = 0;
+            xfer.subaddressSize = 0;
+            xfer.data = msg->buf;
+            xfer.dataSize = msg->len;
+            /* 只有后面还有消息时才抑制 STOP（那条消息会以重复起始接上）。
+             * 最后一条必须发 STOP：单条写消息（rt_i2c_master_send 就是这种）
+             * 若不发 STOP，总线会一直被占住，从机也等不到结束条件。 */
+            if(i + 1 < num)
+                xfer.flags = kLPI2C_TransferNoStopFlag;
+            else
+                xfer.flags = kLPI2C_TransferDefaultFlag;
+
+            if (LPI2C_MasterTransferBlocking(lpc_i2c->I2C, &xfer) != kStatus_Success)
+            {
+                LOG_D("i2c bus write failed!\n");
+                return i;
+            }
+        }
+    }
+    ret = i;
+
+    return ret;
+}
+
+static const struct rt_i2c_bus_device_ops i2c_ops =
+{
+    lpc_i2c_xfer,
+    RT_NULL,
+    RT_NULL
+};
+
+int rt_hw_i2c_init(void)
+{
+    int i;
+    lpi2c_master_config_t masterConfig;
+
+    for(i=0; i<ARRAY_SIZE(lpc_obj); i++)
+    {
+        CLOCK_SetClockDiv(lpc_obj[i].clock_div_name, 1u);
+        CLOCK_AttachClk(lpc_obj[i].clock_attach_id);
+        /* LPI2C 的门控必须显式打开：AttachClk 只选源、不断开外设时钟门。
+         * 少了这一句，LPI2Cx 的寄存器写不进去（读恒为 0），
+         * 表现为总线完全没有波形，而不是报错。drv_uart.c 同样有此调用。 */
+        CLOCK_EnableClock(lpc_obj[i].clock_gate);
+
+        LPI2C_MasterGetDefaultConfig(&masterConfig);
+        masterConfig.baudRate_Hz = lpc_obj[i].baud;
+
+        LPI2C_MasterInit(lpc_obj[i].I2C, &masterConfig, CLOCK_GetFreq(lpc_obj[i].clock_src));
+
+        lpc_obj[i].parent.ops = &i2c_ops;
+
+        rt_i2c_bus_device_register(&lpc_obj[i].parent, lpc_obj[i].name);
+    }
+
+    return RT_EOK;
+}
+INIT_DEVICE_EXPORT(rt_hw_i2c_init);
+
+#endif /* RT_USING_I2C */
+
+
+

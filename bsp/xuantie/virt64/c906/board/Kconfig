@@ -1,0 +1,9 @@
+menu "RISC-V QEMU virt64 configs"
+
+config BSP_USING_VIRTIO_BLK
+    bool "Using VirtIO BLK"
+    select RT_USING_LEGACY_VIRTIO
+    select RT_USING_VIRTIO_BLK
+    default y
+
+endmenu
